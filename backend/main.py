@@ -36,6 +36,7 @@ from core.database import connect_db, close_db
 from core.redis_client import connect_redis, close_redis
 from routers.chat_router import router as chat_router
 from routers.auth_router import router as auth_router
+from routers.google_router import router as google_router
 from services.ingestion_service import initialize_knowledge_base
 from services.chat_service import initialize_session, end_session, DEFAULT_USER
 
@@ -108,6 +109,7 @@ def _custom_openapi():
     # Public routes — no lock icon, no token needed
     _public_paths = {
         "/auth/register", "/auth/login",
+        "/auth/google/connect", "/auth/google/callback",
         "/mcp", "/mcp/health",
         "/debug/state/{user_id}",
         "/",
@@ -133,8 +135,9 @@ app.add_middleware(
 )
 
 # ── Routers ───────────────────────────────────────────────────────────────────
-app.include_router(auth_router, prefix="/auth", tags=["Auth"])
-app.include_router(chat_router, prefix="/chat", tags=["Chat"])
+app.include_router(auth_router,   prefix="/auth",         tags=["Auth"])
+app.include_router(google_router, prefix="/auth/google",   tags=["Google OAuth"])
+app.include_router(chat_router,   prefix="/chat",          tags=["Chat"])
 
 # ── NEW: Mount MCP server ─────────────────────────────────────────────────────
 mount_mcp(app, prefix="/mcp")

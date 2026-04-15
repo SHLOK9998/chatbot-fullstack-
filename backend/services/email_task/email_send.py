@@ -24,49 +24,45 @@ from services.auth_service import get_gmail_service
 logger = logging.getLogger(__name__)
 
 
-async def send_email(data: dict) -> str:
+async def send_email(data: dict, user_id: str) -> str:
     """
-    Send the email using the Gmail API.
-
-    Args:
-        data: State data dict with to_email, subject, body, cc, bcc.
-
-    Returns:
-        Success or error message string.
+    Send the email using the Gmail API for the given user.
     """
-    logger.info("[EmailSend] Sending email to '%s'", data.get("to_email"))
+    logger.info("[EmailSend] Sending email | user=%s | to=%s", user_id, data.get("to_email"))
 
     try:
-        # Build the MIME message
-        message = _build_mime_message(data)
-
-        # Encode to base64 as required by Gmail API
+        message  = _build_mime_message(data, user_id)
         raw_bytes = message.as_bytes()
         encoded   = base64.urlsafe_b64encode(raw_bytes).decode("utf-8")
 
-        # Get authenticated Gmail service
-        service = get_gmail_service()
+        service = await get_gmail_service(user_id)
 
-        # Send via Gmail API
         result = service.users().messages().send(
             userId="me",
             body={"raw": encoded}
         ).execute()
 
         message_id = result.get("id", "unknown")
-        logger.info("[EmailSend] Email sent successfully. Message ID: %s", message_id)
-        return f"✅ Email sent successfully to {data.get('to_email')}!"
+        logger.info("[EmailSend] Sent | user=%s | msg_id=%s", user_id, message_id)
+        return f"Email sent successfully to {data.get('to_email')}!"
 
+    except RuntimeError as e:
+        logger.warning("[EmailSend] Google not connected | user=%s", user_id)
+        return (
+            "To send emails, you need to connect your Google account first.\n\n"
+            "Click the **Connect Google** button at the top of the chat to get started."
+        )
     except Exception as e:
-        logger.error("[EmailSend] Failed to send email: %s", e)
-        return f"❌ Failed to send email: {str(e)}"
+        logger.error("[EmailSend] Failed | user=%s | %s", user_id, e)
+        return f"Failed to send email: {str(e)}"
 
 
-def _build_mime_message(data: dict) -> MIMEMultipart:
+def _build_mime_message(data: dict, user_id: str) -> MIMEMultipart:
     """Build a sanitized MIMEMultipart email from the state data dict."""
 
-    msg = MIMEMultipart("alternative")  # allow both plain + html
-    msg["From"] = settings.GMAIL_SENDER or "me"
+    msg = MIMEMultipart("alternative")
+    # Use the user's own Gmail address as From (fetched from token or fallback)
+    msg["From"] = data.get("_sender_email") or settings.GMAIL_SENDER or "me"
 
     # --- Normalize helper ---
     def normalize_emails(value):

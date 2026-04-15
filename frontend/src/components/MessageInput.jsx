@@ -36,10 +36,10 @@ export default function MessageInput({ onSend, disabled }) {
   }
 
   return (
-    <div className="px-4 py-4 border-t border-slate-800 bg-slate-900/50 backdrop-blur-sm flex-shrink-0">
+    <div className="px-4 py-4 border-t border-slate-800 flex-shrink-0">
       <div className="max-w-3xl mx-auto">
-        <div className={`flex items-end gap-3 bg-slate-800 border rounded-2xl px-4 py-3 transition ${
-          disabled ? 'border-slate-700 opacity-60' : 'border-slate-700 focus-within:border-brand-500'
+        <div className={`flex items-end gap-3 bg-slate-950 border rounded-2xl px-4 py-3 transition ${
+          disabled ? 'border-slate-800 opacity-60' : 'border-slate-800 focus-within:border-brand-500'
         }`}>
           <textarea
             ref={textareaRef}
@@ -48,7 +48,7 @@ export default function MessageInput({ onSend, disabled }) {
             onKeyDown={handleKeyDown}
             disabled={disabled}
             autoFocus
-            placeholder="Message AI Assistant... (Shift+Enter for new line)"
+            placeholder="how can i help you today?"
             rows={1}
             className="flex-1 bg-transparent text-white placeholder-slate-500 text-sm resize-none focus:outline-none leading-relaxed"
             style={{ maxHeight: '160px' }}
@@ -67,9 +67,6 @@ export default function MessageInput({ onSend, disabled }) {
             )}
           </button>
         </div>
-        <p className="text-xs text-slate-600 text-center mt-2">
-          Press Enter to send · Shift+Enter for new line
-        </p>
       </div>
     </div>
   )

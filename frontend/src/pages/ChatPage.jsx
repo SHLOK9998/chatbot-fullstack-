@@ -6,6 +6,7 @@ import Sidebar      from '../components/Sidebar'
 import ChatWindow   from '../components/ChatWindow'
 import MessageInput from '../components/MessageInput'
 import ProfileModal from '../components/ProfileModal'
+import GoogleConnect from '../components/GoogleConnect'
 
 export default function ChatPage() {
   const { logout }   = useAuth()
@@ -64,6 +65,22 @@ export default function ChatPage() {
       }
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Flush summary when tab is closed ───────────────────────────────────────
+  useEffect(() => {
+    const handleUnload = () => {
+      // sendBeacon works even when the page is closing
+      const token = localStorage.getItem('access_token')
+      if (token) {
+        navigator.sendBeacon(
+          'http://127.0.0.1:8000/chat/session/end',
+          new Blob([JSON.stringify({})], { type: 'application/json' })
+        )
+      }
+    }
+    window.addEventListener('beforeunload', handleUnload)
+    return () => window.removeEventListener('beforeunload', handleUnload)
+  }, [])
 
   // ── New chat ────────────────────────────────────────────────────────────────
   // Bug 3 fix: block creating a new thread if the current active thread is
@@ -161,11 +178,20 @@ export default function ChatPage() {
         content: err.response?.data?.detail || 'Something went wrong. Please try again.',
         timestamp: new Date().toISOString(),
         isError: true,
+        retryText: text,
       }
       setMessages(prev => [...prev, errMsg])
     } finally {
       setIsTyping(false)
     }
+  }
+
+  // ── Retry failed message ───────────────────────────────────────────────────────────
+  const handleRetry = (text) => {
+    if (!text) return
+    // Remove the last error message then resend
+    setMessages(prev => prev.filter(m => !m.isError))
+    handleSend(text)
   }
 
   // ── Logout ──────────────────────────────────────────────────────────────────
@@ -215,6 +241,7 @@ export default function ChatPage() {
 
       {/* Main chat area */}
       <main className="flex-1 flex flex-col overflow-hidden">
+        <GoogleConnect />
         {loadingMessages ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
@@ -224,6 +251,7 @@ export default function ChatPage() {
             messages={messages}
             isTyping={isTyping}
             threadTitle={activeThreadTitle}
+            onRetry={handleRetry}
           />
         )}
         <MessageInput onSend={handleSend} disabled={isTyping} />

@@ -66,8 +66,10 @@ export default function Sidebar({
       {/* Header */}
       <div className="p-4 border-b border-slate-800">
         <div className="flex items-center gap-2 mb-4">
-          <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center text-lg">🤖</div>
-          <span className="text-white font-semibold text-sm">AI Assistant</span>
+          <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center">
+            <span className="text-white font-bold text-xs" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>AI</span>
+          </div>
+          <span className="text-white font-bold text-sm" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>AI Assistant</span>
         </div>
         <button
           onClick={onNewChat}

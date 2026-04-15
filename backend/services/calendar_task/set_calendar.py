@@ -84,15 +84,14 @@ async def build_event_body(data: dict) -> dict:
 
 async def create_event(data: dict, user_id: str) -> str:
     """
-    Create the calendar event via the Google Calendar API.
-    All persistence is handled by chat_service.save_message() — no memory.save_context() needed.
+    Create the calendar event via the Google Calendar API for the given user.
     """
     summary = data.get("title") or data.get("purpose") or "New Event"
-    logger.info("[SetCalendar] Creating event: '%s'", summary)
+    logger.info("[SetCalendar] Creating event: '%s' | user=%s", summary, user_id)
 
     try:
         event_body = await build_event_body(data)
-        service    = get_calendar_service()
+        service    = await get_calendar_service(user_id)
 
         result = service.events().insert(
             calendarId="primary",
@@ -104,21 +103,27 @@ async def create_event(data: dict, user_id: str) -> str:
         event_link      = result.get("htmlLink", "")
         created_summary = result.get("summary", summary)
 
-        logger.info("[SetCalendar] Event created (ID=%s)", event_id)
+        logger.info("[SetCalendar] Event created | user=%s | id=%s", user_id, event_id)
 
-        msg = f"✅ Event **{created_summary}** created successfully!"
+        msg = f"Event **{created_summary}** created successfully!"
         if event_link:
-            msg += f"\n📎 [View in Google Calendar]({event_link})"
+            msg += f"\n[View in Google Calendar]({event_link})"
 
         invited = [a["email"] for a in (data.get("attendees") or []) if a.get("email")]
         if invited:
-            msg += f"\n📧 Invites sent to: {', '.join(invited)}"
+            msg += f"\nInvites sent to: {', '.join(invited)}"
 
         return msg
 
+    except RuntimeError as e:
+        logger.warning("[SetCalendar] Google not connected | user=%s", user_id)
+        return (
+            "To create calendar events, you need to connect your Google account first.\n\n"
+            "Click the **Connect Google** button at the top of the chat to get started."
+        )
     except ValueError as e:
-        logger.error("[SetCalendar] Validation error: %s", e)
-        return f"❌ Could not create event: {str(e)}"
+        logger.error("[SetCalendar] Validation error | user=%s | %s", user_id, e)
+        return f"Could not create event: {str(e)}"
     except Exception as e:
-        logger.exception("[SetCalendar] API call failed")
-        return f"❌ Failed to create the event: {str(e)}"
+        logger.exception("[SetCalendar] API call failed | user=%s", user_id)
+        return f"Failed to create the event: {str(e)}"

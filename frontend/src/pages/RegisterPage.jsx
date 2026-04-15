@@ -39,8 +39,10 @@ export default function RegisterPage() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-brand-500 mb-4 text-3xl">🤖</div>
-          <h1 className="text-2xl font-bold text-white">Create Account</h1>
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-brand-500 mb-4">
+            <span className="text-white font-bold text-xl" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>AI</span>
+          </div>
+          <h1 className="text-2xl font-bold text-white" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Create Account</h1>
           <p className="text-slate-400 mt-1 text-sm">Join your Personal AI Assistant</p>
         </div>
 

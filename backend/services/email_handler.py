@@ -352,7 +352,7 @@ async def _stage_preview(user_message: str, user_id: str, state: dict) -> str:
     logger.info("[EmailHandler] preview action=%s", action)
 
     if action == "send":
-        result = await email_send.send_email(state)
+        result = await email_send.send_email(state, user_id)
         await _clear(user_id)
         return result
 

@@ -48,6 +48,9 @@ class Settings:
     # REDIS URL FOR CACHE DATA STORAGE FOR BETTER AND FASTER REPLY
     REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 
+    # Google OAuth redirect URI
+    GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "http://127.0.0.1:8000/auth/google/callback")
+
     # JWT auth — sliding session
     JWT_SECRET      = os.getenv("JWT_SECRET", "change-this-secret-in-production")
     JWT_EXPIRE_DAYS = int(os.getenv("JWT_EXPIRE_DAYS", "30"))
