@@ -116,12 +116,16 @@ async def _handle_side_question(user_message: str, user_id: str, thread_id: Opti
         }
         resume = stage_prompts.get(stage, f"By the way, your calendar event '{title}' is still pending.")
     elif count <= 3:
-        resume = f"📅 Calendar event '{title}' still pending."
+        resume = f"Calendar event '{title}' still pending."
     else:
         resume = ""
 
     combined = f"{answer}\n\n{resume}" if resume else answer
-    state["_last_reply"] = combined
+
+    # Restore _last_reply to the original stage prompt so the gate classifier
+    # has correct context on the next message — not the side question answer
+    original_stage_reply = state.get("_stage_reply", state.get("_last_reply", ""))
+    state["_last_reply"]  = original_stage_reply
     await _save(user_id, state)
     return combined
 
@@ -176,7 +180,7 @@ async def handle_calendar_flow(
     if stage != "preview" and _is_exit(user_message):
         await _clear(user_id)
         logger.info("[CalHandler] user=%s exited calendar flow", user_id)
-        return "✅ Calendar event creation cancelled. How else can I help?"
+        return "Calendar event creation cancelled. How else can I help?"
 
     logger.info("[CalHandler] user=%s | stage=%s", user_id, stage or "new")
 
@@ -232,7 +236,8 @@ async def _stage_extract(user_message: str, user_id: str, thread_id: Optional[st
         state.update(updated)
         state["stage"] = "ask_missing"
         reply = question or "Could you provide more details about the event?"
-        state["_last_reply"] = reply
+        state["_last_reply"]  = reply
+        state["_stage_reply"] = reply
         await _save(user_id, state)
         return reply
 
@@ -245,8 +250,9 @@ async def _stage_ask_missing(user_message: str, user_id: str, state: dict) -> st
     state.update(updated)
 
     if question:
-        state["stage"]       = "ask_missing"
-        state["_last_reply"] = question
+        state["stage"]        = "ask_missing"
+        state["_last_reply"]  = question
+        state["_stage_reply"] = question
         await _save(user_id, state)
         return question
 
@@ -267,8 +273,9 @@ async def _enter_attendees_stage(user_id: str, state: dict, original_message: st
     state.update(updated)
 
     if question:
-        state["stage"]       = "ask_attendees"
-        state["_last_reply"] = question
+        state["stage"]        = "ask_attendees"
+        state["_last_reply"]  = question
+        state["_stage_reply"] = question
         await _save(user_id, state)
         return question
 
@@ -284,8 +291,9 @@ async def _stage_ask_attendees(user_message: str, user_id: str, state: dict) -> 
     state.update(updated)
 
     if question:
-        state["stage"]       = "ask_attendees"
-        state["_last_reply"] = question
+        state["stage"]        = "ask_attendees"
+        state["_last_reply"]  = question
+        state["_stage_reply"] = question
         await _save(user_id, state)
         return question
 
@@ -295,7 +303,8 @@ async def _stage_ask_attendees(user_message: str, user_id: str, state: dict) -> 
 async def _enter_preview_stage(user_id: str, state: dict) -> str:
     state["stage"] = "preview"
     reply = cal_preview.build_preview(state)
-    state["_last_reply"] = reply
+    state["_last_reply"]  = reply
+    state["_stage_reply"] = reply
     await _save(user_id, state)
     return reply
 
@@ -311,7 +320,7 @@ async def _stage_preview(user_message: str, user_id: str, state: dict) -> str:
 
     if action == "cancel":
         await _clear(user_id)
-        return "✅ Event cancelled. Let me know if you'd like to schedule something else!"
+        return "Event cancelled. Let me know if you'd like to schedule something else!"
 
     if action == "modify":
         updated_data, ask_question = await cal_modifier.modify_event(state, instruction)

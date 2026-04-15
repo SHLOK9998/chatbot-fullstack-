@@ -118,12 +118,16 @@ async def _handle_side_question(user_message: str, user_id: str, thread_id: Opti
         }
         resume = stage_prompts.get(stage, f"By the way, your email to {to_name} is still pending.")
     elif count <= 3:
-        resume = f"📧 Email to {to_name} still pending."
+        resume = f"Your email to {to_name} is still pending."
     else:
         resume = ""
 
     combined = f"{answer}\n\n{resume}" if resume else answer
-    state["_last_reply"] = combined
+
+    # Restore _last_reply to the original stage prompt so the gate classifier
+    # has correct context on the next message — not the side question answer
+    original_stage_reply = state.get("_stage_reply", state.get("_last_reply", ""))
+    state["_last_reply"]  = original_stage_reply
     await _save(user_id, state)
     return combined
 
@@ -178,7 +182,7 @@ async def handle_email_flow(
     if stage != "preview" and _is_exit(user_message):
         await _clear(user_id)
         logger.info("[EmailHandler] user=%s exited email flow", user_id)
-        return "✅ Email cancelled. How else can I help you?"
+        return "Email cancelled. How else can I help you?"
 
     logger.info("[EmailHandler] user=%s | stage=%s", user_id, stage or "new")
 
@@ -239,7 +243,8 @@ async def _stage_extract(user_message: str, user_id: str, thread_id: Optional[st
         state.update(updated)
         state["stage"] = "ask_required"
         reply = question or "Could you provide more details?"
-        state["_last_reply"] = reply
+        state["_last_reply"]  = reply
+        state["_stage_reply"] = reply
         await _save(user_id, state)
         return reply
 
@@ -273,6 +278,7 @@ async def _stage_ask_required(user_message: str, user_id: str, state: dict) -> s
     if question:
         state["stage"] = "ask_required"
         state["_last_reply"] = question
+        state["_stage_reply"] = question
         await _save(user_id, state)
         return question
 
@@ -285,6 +291,7 @@ async def _stage_ask_required(user_message: str, user_id: str, state: dict) -> s
     state.update(updated2)
     if opt_question:
         state["_last_reply"] = opt_question
+        state["_stage_reply"] = opt_question
         await _save(user_id, state)
         return opt_question
     return await _generate_and_preview(user_id, state)
@@ -297,6 +304,7 @@ async def _stage_ask_optional(user_message: str, user_id: str, state: dict) -> s
     if question:
         state["stage"] = "ask_optional"
         state["_last_reply"] = question
+        state["_stage_reply"] = question
         await _save(user_id, state)
         return question
 
@@ -334,6 +342,7 @@ async def _generate_and_preview(user_id: str, state: dict) -> str:
     state["stage"]       = "preview"
     reply                = email_preview.build_preview(state)
     state["_last_reply"] = reply
+    state["_stage_reply"] = reply
     await _save(user_id, state)
     return reply
 
@@ -349,7 +358,7 @@ async def _stage_preview(user_message: str, user_id: str, state: dict) -> str:
 
     if action == "cancel":
         await _clear(user_id)
-        return "✅ Email cancelled. Is there anything else I can help with?"
+        return "Email cancelled. Is there anything else I can help with?"
 
     if action == "modify":
         state["stage"] = "modify"
