@@ -4,7 +4,7 @@ Rolling conversation summary — ONE summary document per thread.
 
 MODEL:
   - ONE MongoDB document per thread in the 'summaries' collection (upsert).
-  - Every 15 rounds (= 30 messages) the LLM merges those messages into the
+  - Every 3 turns (= 6 messages) the LLM merges those messages into the
     existing summary. The result REPLACES the old summary (rolling upsert).
   - On session end (Ctrl+C or explicit call), all remaining unsummarised
     messages are merged in — so ZERO messages are ever left outside the summary.
@@ -16,7 +16,7 @@ REDIS CACHING (new):
     Redis key: "summary:{thread_id}"
     READ:  Redis first → MongoDB on miss → store in Redis
     This is called on EVERY LLM prompt, so caching here saves the most reads.
-    The summary only changes every 30 messages or at session end.
+    The summary only changes every 6 messages or at session end.
 
   _upsert_summary(thread_id, text):
     Writes to MongoDB (source of truth) then immediately updates Redis.
@@ -53,9 +53,9 @@ logger = logging.getLogger(__name__)
 
 COLLECTION = "summaries"
 
-# 15 turns × 2 messages per turn = 30 messages per summary window
-SUMMARY_EVERY_TURNS  = 15
-MESSAGES_PER_SUMMARY = SUMMARY_EVERY_TURNS * 2   # = 30
+# 3 turns × 2 messages per turn = 6 messages per summary window
+SUMMARY_EVERY_TURNS  = 3
+MESSAGES_PER_SUMMARY = SUMMARY_EVERY_TURNS * 2   # = 6
 
 # Redis key pattern for current thread summary
 _SUMMARY_KEY = "summary:{}"          # .format(thread_id)
@@ -234,11 +234,11 @@ async def maybe_update_summary(
     llm,
 ) -> None:
     """
-    Trigger a rolling summary update if 30+ new messages have accumulated
+    Trigger a rolling summary update if 6+ new messages have accumulated
     since the last summary update.
 
     Called from chat_service._save_turn_to_mongodb() after every turn.
-    Fires when: (new_message_count - summarized_up_to) >= 30.
+    Fires when: (new_message_count - summarized_up_to) >= 6.
     """
     unsummarised = new_message_count - summarized_up_to
 
@@ -253,7 +253,7 @@ async def maybe_update_summary(
     end_msg   = summarized_up_to + MESSAGES_PER_SUMMARY
 
     logger.info(
-        "[Summary] 15-round trigger | thread=%s | window=%d–%d",
+        "[Summary] 3-turn trigger | thread=%s | window=%d-%d",
         thread_id, start_msg, end_msg,
     )
 

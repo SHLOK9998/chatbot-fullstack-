@@ -4,6 +4,11 @@ export default function MessageInput({ onSend, disabled }) {
   const [text, setText] = useState('')
   const textareaRef     = useRef(null)
 
+  // Keep focus on textarea always
+  useEffect(() => {
+    if (!disabled) textareaRef.current?.focus()
+  }, [disabled])
+
   // Auto-resize textarea
   useEffect(() => {
     const el = textareaRef.current
@@ -17,8 +22,10 @@ export default function MessageInput({ onSend, disabled }) {
     if (!trimmed || disabled) return
     onSend(trimmed)
     setText('')
-    // Reset height
-    if (textareaRef.current) textareaRef.current.style.height = 'auto'
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+      textareaRef.current.focus()
+    }
   }
 
   const handleKeyDown = e => {
@@ -40,6 +47,7 @@ export default function MessageInput({ onSend, disabled }) {
             onChange={e => setText(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={disabled}
+            autoFocus
             placeholder="Message AI Assistant... (Shift+Enter for new line)"
             rows={1}
             className="flex-1 bg-transparent text-white placeholder-slate-500 text-sm resize-none focus:outline-none leading-relaxed"

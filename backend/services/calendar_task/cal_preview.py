@@ -52,19 +52,20 @@ def build_preview(data: dict) -> str:
         attendees_display = "None"
 
     preview = (
-        f" **Calendar Event Preview**\n"
-        f"{'─' * 44}\n"
-        f"**Title       :** {title}\n"
-        f"**When        :** {start_display}\n"
-        f"**Location    :** {location}\n"
-        f"**Description :** {description}\n"
-        f"**Recurrence  :** {recurrence}\n"
-        f"**Attendees   :** {attendees_display}\n"
-        f"{'─' * 44}\n\n"
-        f"What would you like to do?\n"
-        f"   **Confirm** — create the event\n"
-        f"    **Modify** — change time, title, location, attendees, etc.\n"
-        f"   **Cancel** — discard this event"
+        f"### Calendar Event Preview\n\n"
+        f"| Field | Details |\n"
+        f"|---|---|\n"
+        f"| **Title** | {title} |\n"
+        f"| **When** | {start_display} |\n"
+        f"| **Location** | {location} |\n"
+        f"| **Description** | {description} |\n"
+        f"| **Recurrence** | {recurrence} |\n"
+        f"| **Attendees** | {attendees_display if isinstance(attendees_display, str) and attendees_display == 'None' else ', '.join(f"{a.get('name','')} <{a.get('email','')}>".strip(' <>') for a in (data.get('attendees') or []))} |\n\n"
+        f"---\n\n"
+        f"**What would you like to do?**\n\n"
+        f"- **Confirm** — create the event\n"
+        f"- **Modify** — change time, title, location, attendees, etc.\n"
+        f"- **Cancel** — discard this event"
     )
 
     logger.info("[CalPreview] Preview built for event='%s'", title)

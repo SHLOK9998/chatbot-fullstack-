@@ -1,7 +1,6 @@
 import React, { useEffect, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { useAuth } from '../context/AuthContext'
 
 function TypingIndicator() {
   return (
@@ -18,6 +17,16 @@ function TypingIndicator() {
   )
 }
 
+// Normalize backend text: convert literal \n to real newlines,
+// and ensure lines that look like headers/bullets are markdown-ready
+function normalizeContent(text) {
+  if (!text) return ''
+  return text
+    .replace(/\\n/g, '\n')   // literal \n escape → real newline
+    .replace(/\r\n/g, '\n')  // Windows line endings
+    .replace(/\r/g, '\n')    // old Mac line endings
+}
+
 function Message({ msg }) {
   const isUser = msg.role === 'user'
 
@@ -30,7 +39,7 @@ function Message({ msg }) {
     return (
       <div className="flex justify-end mb-4">
         <div className="max-w-[75%]">
-          <div className="bg-brand-500 text-white rounded-2xl rounded-br-sm px-4 py-3 text-sm leading-relaxed">
+          <div className="bg-brand-500 text-white rounded-2xl rounded-br-sm px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap">
             {msg.content}
           </div>
           {msg.timestamp && (
@@ -42,11 +51,11 @@ function Message({ msg }) {
   }
 
   return (
-    <div className="flex items-end gap-2 mb-4">
-      <div className="w-7 h-7 rounded-full bg-brand-500/20 border border-brand-500/30 flex items-center justify-center flex-shrink-0 text-sm">🤖</div>
+    <div className="flex items-start gap-2 mb-4">
+      <div className="w-7 h-7 rounded-full bg-brand-500/20 border border-brand-500/30 flex items-center justify-center flex-shrink-0 text-xs font-bold text-brand-500 mt-1">AI</div>
       <div className="max-w-[75%]">
-        <div className="bg-slate-800 border border-slate-700 text-slate-100 rounded-2xl rounded-bl-sm px-4 py-3 text-sm leading-relaxed prose-chat">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+        <div className="bg-slate-800 border border-slate-700 text-slate-100 rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed prose-chat">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{normalizeContent(msg.content)}</ReactMarkdown>
         </div>
         {msg.timestamp && (
           <p className="text-xs text-slate-500 mt-1">{formatTime(msg.timestamp)}</p>

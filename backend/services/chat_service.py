@@ -77,6 +77,7 @@ def _build_system_prompt() -> str:
         "You help with answering questions, sending emails, managing calendar events, "
         "and searching through employee and company data.\n"
         "Always be clear, concise, and helpful in your replies.\n"
+        "IMPORTANT: Never use emojis in any response. Plain text only.\n"
     )
 
 
@@ -183,11 +184,11 @@ async def _handle_rag(query: str, user_id: str, thread_id: str) -> str:
         "\n\nUSER QUESTION:\n" + query
         + "\n\n--- INSTRUCTIONS ---\n"
         "- Answer the user's question directly and specifically.\n"
-        "- Use the EMPLOYEE KNOWLEDGE BASE as the primary source for any person/employee queries.\n"
-        "- Use conversation history and session summary for context about what was discussed.\n"
+        "- The EMPLOYEE KNOWLEDGE BASE contains company staff data. Use it ONLY if the user is asking about a specific person, employee, team, role, salary, contact, or company-internal information.\n"
+        "- For general knowledge questions (technology, coding, concepts, how-to, etc.) answer from your own knowledge — do NOT mention employees or company data.\n"
+        "- NEVER suggest or recommend employees as a response to a general question.\n"
         "- NEVER hallucinate names, roles, emails, phone numbers, or details not in the knowledge base.\n"
-        "- If the exact answer is not in the knowledge base, say: 'I don't have that information.'\n"
-        "- For employee queries: always include name, role, position, contact, email if available.\n"
+        "- If the exact answer is not in the knowledge base for an employee query, say: 'I don't have that information.'\n"
         "- Be concise, specific, and accurate.\n"
         "\nFINAL ANSWER:"
     )

@@ -261,20 +261,17 @@ async def reset():
 async def session_new(user_id: str = Depends(get_current_user)):
     """
     Explicitly create a new thread and make it the active one.
-
-    Use this when the frontend 'New Chat' button is clicked.
-    The previous thread is preserved in history — nothing is deleted.
-
-    Returns the new thread_id so the frontend can update its sidebar.
+    Also updates the in-memory _active_threads cache in chat_service
+    so the very next POST /chat/ message goes to the new thread.
     """
-    from services.thread_service import create_new_thread
+    from services.chat_service import initialize_session
     logger.info("[Router] session/new | user=%s", user_id)
-    thread_id = await create_new_thread(user_id)
+    thread_id = await initialize_session(user_id)
     logger.info("[Router] session/new created thread=%s | user=%s", thread_id, user_id)
     return {
-        "ok":       True,
+        "ok":        True,
         "thread_id": thread_id,
-        "message":  "New thread created and set as active.",
+        "message":   "New thread created and set as active.",
     }
 
 
@@ -372,8 +369,9 @@ async def switch_thread(
     if thread.get("user_id") != user_id:
         raise HTTPException(status_code=403, detail="Access denied.")
 
-    # 2. Switch
-    switched = await set_active_thread(user_id, thread_id)
+    # 2. Switch — use chat_service.switch_to_thread so _active_threads cache is updated
+    from services.chat_service import switch_to_thread
+    switched = await switch_to_thread(user_id, thread_id)
     if not switched:
         raise HTTPException(status_code=500, detail="Failed to switch thread.")
 

@@ -22,17 +22,14 @@ export default function ChatPage() {
   const [sidebarOpen, setSidebarOpen]     = useState(true)
 
   // ── Load thread list ────────────────────────────────────────────────────────
+  // NOTE: fetchThreads only updates the sidebar list — it never overwrites
+  // activeThreadId so local state (set by handleNewChat / handleSelectThread)
+  // always wins over whatever the server thinks is "active".
   const fetchThreads = useCallback(async () => {
     try {
       const res = await api.get('/chat/threads')
       const list = res.data.threads || []
       setThreads(list)
-      // Set active thread from list
-      const active = list.find(t => t.active)
-      if (active) {
-        setActiveThreadId(active.thread_id)
-        setActiveThreadTitle(active.title || 'New Conversation')
-      }
       return list
     } catch {
       // silently fail
@@ -55,17 +52,25 @@ export default function ChatPage() {
     }
   }, [])
 
-  // On mount — load threads then load messages for active thread
+  // On mount — load threads then load messages for the server-active thread
   useEffect(() => {
     fetchThreads().then(list => {
       if (!list) return
       const active = list.find(t => t.active)
-      if (active) fetchMessages(active.thread_id)
+      if (active) {
+        setActiveThreadId(active.thread_id)
+        setActiveThreadTitle(active.title || 'New Conversation')
+        fetchMessages(active.thread_id)
+      }
     })
-  }, [fetchThreads, fetchMessages])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── New chat ────────────────────────────────────────────────────────────────
+  // Bug 3 fix: block creating a new thread if the current active thread is
+  // already empty (title is still 'New Conversation' and no messages)
   const handleNewChat = async () => {
+    const currentIsEmpty = messages.length === 0
+    if (currentIsEmpty) return   // already on a blank thread, do nothing
     try {
       const res = await api.post('/chat/session/new')
       const newId = res.data.thread_id
@@ -115,7 +120,9 @@ export default function ChatPage() {
 
   // ── Send message ────────────────────────────────────────────────────────────
   const handleSend = async (text) => {
-    // Optimistically add user message
+    // Capture activeThreadId at the moment of send — closure-safe
+    const threadIdAtSend = activeThreadId
+
     const userMsg = { role: 'user', content: text, timestamp: new Date().toISOString() }
     setMessages(prev => [...prev, userMsg])
     setIsTyping(true)
@@ -129,13 +136,25 @@ export default function ChatPage() {
       }
       setMessages(prev => [...prev, assistantMsg])
 
-      // Refresh thread list (title may have been generated after first turn)
-      await fetchThreads()
-      // Update title in header
-      const updated = await api.get('/chat/threads')
-      const active = (updated.data.threads || []).find(t => t.thread_id === activeThreadId)
-      if (active?.title) setActiveThreadTitle(active.title)
-
+      // Refresh sidebar immediately
+      const list = await fetchThreads()
+      if (list) {
+        const sent = list.find(t => t.thread_id === threadIdAtSend)
+        if (sent?.title && sent.title !== 'New Conversation') {
+          setActiveThreadTitle(sent.title)
+        } else {
+          // Title is generated async on backend after first turn — poll once after 3s
+          setTimeout(async () => {
+            const delayed = await fetchThreads()
+            if (delayed) {
+              const t = delayed.find(t => t.thread_id === threadIdAtSend)
+              if (t?.title && t.title !== 'New Conversation') {
+                setActiveThreadTitle(t.title)
+              }
+            }
+          }, 3000)
+        }
+      }
     } catch (err) {
       const errMsg = {
         role: 'assistant',
@@ -182,6 +201,7 @@ export default function ChatPage() {
           onOpenProfile={() => setShowProfile(true)}
           onLogout={handleLogout}
           loadingThreads={loadingThreads}
+          isCurrentThreadEmpty={messages.length === 0}
         />
       </div>
 
