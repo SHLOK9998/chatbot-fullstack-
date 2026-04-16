@@ -29,10 +29,12 @@ class Settings:
     # Token file shared by Gmail + Calendar (both scopes baked in at auth time)
     GOOGLE_TOKEN_FILE = project_root / os.getenv("GOOGLE_TOKEN_FILE", "creden/token.json")
 
-    # Google OAuth scopes (Gmail + Calendar combined)
+    # Google OAuth scopes (Gmail + Calendar + Tasks)
     GOOGLE_SCOPES = [
         "https://www.googleapis.com/auth/gmail.send",
-        "https://www.googleapis.com/auth/calendar"
+        "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/calendar",
+        "https://www.googleapis.com/auth/tasks",
     ]
 
     #Sender Gmail address (used as "From" header)

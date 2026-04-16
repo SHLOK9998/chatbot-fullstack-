@@ -66,20 +66,21 @@ export default function ChatPage() {
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Flush summary when tab is closed ───────────────────────────────────────
+  // ── Flush summary when tab is closed or hidden ───────────────────────────────
   useEffect(() => {
-    const handleUnload = () => {
-      // sendBeacon works even when the page is closing
-      const token = localStorage.getItem('access_token')
-      if (token) {
-        navigator.sendBeacon(
-          'http://127.0.0.1:8000/chat/session/end',
-          new Blob([JSON.stringify({})], { type: 'application/json' })
-        )
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        const token = localStorage.getItem('access_token')
+        if (token) {
+          navigator.sendBeacon(
+            'http://127.0.0.1:8000/chat/session/end',
+            new Blob([JSON.stringify({})], { type: 'application/json' })
+          )
+        }
       }
     }
-    window.addEventListener('beforeunload', handleUnload)
-    return () => window.removeEventListener('beforeunload', handleUnload)
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
   }, [])
 
   // ── New chat ────────────────────────────────────────────────────────────────

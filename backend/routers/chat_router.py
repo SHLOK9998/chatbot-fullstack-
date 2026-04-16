@@ -318,12 +318,19 @@ async def get_thread_messages(
     else:
         raw_messages = await get_recent_messages(thread_id, limit=limit)
 
-    # 3. Serialize — strip MongoDB _id, keep only frontend-useful fields
+    # Serialize — strip MongoDB _id, keep only frontend-useful fields
+    # Force UTC suffix so browser correctly converts to local time (IST = UTC+5:30)
+    def _ts(dt):
+        if not dt: return None
+        iso = dt.isoformat()
+        if iso.endswith('+00:00') or iso.endswith('Z'): return iso
+        return iso + 'Z'
+
     messages = [
         {
             "role":      m.get("role", ""),
             "content":   m.get("content", ""),
-            "timestamp": m["timestamp"].isoformat() if m.get("timestamp") else None,
+            "timestamp": _ts(m.get("timestamp")),
         }
         for m in raw_messages
     ]

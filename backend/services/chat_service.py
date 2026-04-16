@@ -23,6 +23,8 @@ from services.summary_service import (
 from services.mongo_rag_service import search_employees
 from services.db_query_service import handle_db_query
 from services.crud_service import handle_crud
+from services.gmail_read_service import handle_gmail_read
+from services.tasks_service import handle_tasks
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -74,8 +76,8 @@ async def get_thread_list(user_id: str) -> list[dict]:
 def _build_system_prompt() -> str:
     return (
         'You are "Personal Assistant" — a smart, reliable, and friendly AI assistant.\n'
-        "You help with answering questions, sending emails, managing calendar events, "
-        "and searching through employee and company data.\n"
+        "You help with answering questions, sending and reading emails, managing calendar events, "
+        "managing personal tasks, and searching through employee and company data.\n"
         "Always be clear, concise, and helpful in your replies.\n"
         "IMPORTANT: Never use emojis in any response. Plain text only.\n"
     )
@@ -263,7 +265,11 @@ async def process_query_direct(query: str, user_id: str = DEFAULT_USER) -> str:
         return await handle_db_query(query, user_id)
     if intent == "crud":
         return await handle_crud(query, user_id)
-    # email/calendar intents fall through to RAG to avoid nested flows
+    if intent == "email_read":
+        return await handle_gmail_read(query, user_id)
+    if intent == "tasks":
+        return await handle_tasks(query, user_id)
+    # email_send/calendar intents fall through to RAG to avoid nested flows
     return await _handle_rag(query, user_id, thread_id)
 
 
@@ -319,10 +325,14 @@ async def process_query(query: str, user_id: str = DEFAULT_USER) -> str:
     intent = detect_intent(query)
     logger.info("[Router] Intent = %s", intent)
 
-    if intent == "email":
+    if intent == "email_send":
         reply = await handle_email_flow(query, user_id, thread_id)
     elif intent == "calendar":
         reply = await handle_calendar_flow(query, user_id, thread_id)
+    elif intent == "email_read":
+        reply = await handle_gmail_read(query, user_id)
+    elif intent == "tasks":
+        reply = await handle_tasks(query, user_id)
     elif intent == "db_query":
         reply = await handle_db_query(query, user_id)
     elif intent == "crud":

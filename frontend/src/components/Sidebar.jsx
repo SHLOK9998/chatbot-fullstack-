@@ -6,8 +6,8 @@ function ThreadItem({ thread, active, onSelect, onDelete }) {
 
   const formatDate = iso => {
     if (!iso) return ''
-    const d       = new Date(iso)
-    const now     = new Date()
+    const d        = new Date(iso)
+    const now      = new Date()
     const diffDays = Math.floor((now - d) / 86400000)
     if (diffDays === 0) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     if (diffDays === 1) return 'Yesterday'
