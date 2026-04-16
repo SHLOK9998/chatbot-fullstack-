@@ -146,17 +146,17 @@ def _excel_to_row_documents(excel_path: Path) -> List[Tuple[str, dict]]:
     for idx, row in df.iterrows():
         row_dict = {k: str(v).strip() for k, v in row.to_dict().items()}
 
-        name     = row_dict.get("name", "Unknown")
-        middle_name = row_dict.get("middle_name","")
-        surname = row_dict.get("surname","")
-        field     = row_dict.get("field", "")
-        position = row_dict.get("position", "")
-        address  = row_dict.get("address", "")
-        email    = row_dict.get("email", "")
-        github   = row_dict.get("github", "")
-        slack    = row_dict.get("slack", "")
-        linkedin = row_dict.get("linkedin", "")
-        contact  = row_dict.get("contact no", row_dict.get("contact", ""))
+        name        = row_dict.get("name", "Unknown")
+        middle_name = row_dict.get("middle_name", "")
+        lastname    = row_dict.get("lastname", "")
+        department  = row_dict.get("department", "")
+        position    = row_dict.get("position", "")
+        address     = row_dict.get("address", "")
+        email       = row_dict.get("email", "")
+        github      = row_dict.get("github", "")
+        slackid     = row_dict.get("slackid", "")
+        linkedin    = row_dict.get("linkedin", "")
+        contact     = row_dict.get("contact", "")
 
         # ── FIX: guarantee a non-empty, unique employee_no ────────────────────
         emp_no = (
@@ -166,9 +166,12 @@ def _excel_to_row_documents(excel_path: Path) -> List[Tuple[str, dict]]:
         )
 
         content = (
-            f"{name} {surname} is a {field} {position} located in {address}. "
-            f"Email: {email}. Contact: {contact}. github: {github}. slack: {slack}. linkedin: {linkedin} "
-            f"and working in the infopulse tech company "
+            f"{name} {middle_name} {lastname} is a "
+            f"{position} in the {department} department. "
+            f"For contact, reach them at {email} or {contact}. "
+            f"Their address is {address}. "
+            f"Connect via Slack: {slackid}, "
+            f"GitHub: {github}, LinkedIn: {linkedin}."
         ).strip()
 
         metadata = {
@@ -176,7 +179,7 @@ def _excel_to_row_documents(excel_path: Path) -> List[Tuple[str, dict]]:
             "name":        name,
             "email":       email,
             "contact":     contact,
-            "field":        field,
+            "department":  department,
             "position":    position,
             "address":     address,
         }

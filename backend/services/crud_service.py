@@ -13,7 +13,7 @@ from langchain_core.messages import HumanMessage
 logger = logging.getLogger(__name__)
 embedding_service = EmbeddingService()
 
-_REQUIRED_ADD_FIELDS = ["name", "email", "role", "position", "contact"]
+_REQUIRED_ADD_FIELDS = ["name", "email", "department", "position", "contact"]
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
@@ -21,17 +21,17 @@ def _now() -> datetime:
 
 _ACTION_EXTRACT_PROMPT = """You are a database operation extractor for an employee management system.
 
-Employee fields: name, role, position (designation), address, email, contact, employee_no, slack, github, linkedin
+Employee fields: name, middle_name, lastname, department, position, address, email, contact, employee_no, slackid, github, linkedin
 
 User query: "{query}"
 
 Extract the operation and data. Return ONLY valid JSON in one of these formats:
 
 For ADD (new employee):
-{{"operation": "add", "data": {{"name": "...", "middle_name": "...", "surname": "...", "role": "...", "position": "...", "address": "...", "email": "...", "contact": "...", "employee_no": "...", "slack": "...", "github": "...", "linkedin": "..."}}}}
+{{"operation": "add", "data": {{"name": "...", "middle_name": "...", "lastname": "...", "department": "...", "position": "...", "address": "...", "email": "...", "contact": "...", "employee_no": "...", "slackid": "...", "github": "...", "linkedin": "..."}}}}
 
 For UPDATE (change existing employee):
-{{"operation": "update", "find_by": {{"name": "..."}}, "update_fields": {{"role": "...", "contact": "...", "address": "...", "email": "..."}}}}
+{{"operation": "update", "find_by": {{"name": "..."}}, "update_fields": {{"department": "...", "contact": "...", "address": "...", "email": "..."}}}}
 
 For DELETE (remove employee):
 {{"operation": "delete", "find_by": {{"name": "..."}}}}
@@ -62,12 +62,24 @@ async def _extract_action(query: str) -> dict:
 
 
 def _build_content_text(data: dict) -> str:
+    name       = data.get('name', 'Unknown')
+    middle     = data.get('middle_name', '')
+    lastname   = data.get('lastname', '')
+    department = data.get('department', '')
+    position   = data.get('position', '')
+    address    = data.get('address', '')
+    email      = data.get('email', '')
+    contact    = data.get('contact', '')
+    slackid    = data.get('slackid', '')
+    github     = data.get('github', '')
+    linkedin   = data.get('linkedin', '')
     return (
-        f"{data.get('name', 'Unknown')} is a "
-        f"{data.get('role', '')} {data.get('position', '')} "
-        f"located in {data.get('address', '')}. "
-        f"Email: {data.get('email', '')}. "
-        f"Contact: {data.get('contact', '')}."
+        f"{name} {middle} {lastname} is a "
+        f"{position} in the {department} department. "
+        f"For contact, reach them at {email} or {contact}. "
+        f"Their address is {address}. "
+        f"Connect via Slack: {slackid}, "
+        f"GitHub: {github}, LinkedIn: {linkedin}."
     ).strip()
 
 
@@ -85,11 +97,11 @@ async def _add_employee(data: dict) -> str:
     missing = _check_required_add_fields(data)
     if missing:
         field_labels = {
-            "name":     "Full Name",
-            "email":    "Email Address",
-            "role":     "Role (e.g. Full Stack, Backend, Frontend)",
-            "position": "Designation/Position (e.g. Intern, Senior, Lead)",
-            "contact":  "Contact Number",
+            "name":       "Full Name",
+            "email":      "Email Address",
+            "department": "Department (e.g. AIML, DevOps, Full Stack)",
+            "position":   "Position (e.g. Intern, Employee)",
+            "contact":    "Contact Number",
         }
         missing_display = ", ".join(field_labels.get(f, f) for f in missing)
         return (
@@ -125,15 +137,15 @@ async def _add_employee(data: dict) -> str:
     await collection.insert_one(doc)
     logger.info("[CRUD] Added new employee: %s", data.get("name"))
 
-    name     = data.get("name")
-    role     = data.get("role", "")
-    position = data.get("position", "")
-    email    = data.get("email", "")
-    contact  = data.get("contact", "")
-    address  = data.get("address", "")
+    name       = data.get("name")
+    department = data.get("department", "")
+    position   = data.get("position", "")
+    email      = data.get("email", "")
+    contact    = data.get("contact", "")
+    address    = data.get("address", "")
 
-    summary = f"✅ Employee **{name}** has been added successfully.\n"
-    summary += f"- Role: {role} {position}\n"
+    summary = f"Employee **{name}** has been added successfully.\n"
+    summary += f"- Department: {department} | Position: {position}\n"
     summary += f"- Email: {email}\n"
     summary += f"- Contact: {contact}\n"
     if address:

@@ -2,8 +2,8 @@
 import asyncio
 import logging
 
-from core.dependencies import get_llm
-from utils.intent_detector import detect_intent
+from core.dependencies import get_llm, get_openai_llm
+from utils.intent_detector import detect_intent, detect_intent_async
 
 from services.thread_service import (
     create_new_thread,
@@ -23,6 +23,8 @@ from services.summary_service import (
 from services.mongo_rag_service import search_employees
 from services.db_query_service import handle_db_query
 from services.crud_service import handle_crud
+from services.gmail_read_service import handle_gmail_read
+from services.tasks_service import handle_tasks
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -74,9 +76,10 @@ async def get_thread_list(user_id: str) -> list[dict]:
 def _build_system_prompt() -> str:
     return (
         'You are "Personal Assistant" — a smart, reliable, and friendly AI assistant.\n'
-        "You help with answering questions, sending emails, managing calendar events, "
-        "and searching through employee and company data.\n"
+        "You help with answering questions, sending and reading emails, managing calendar events, "
+        "managing personal tasks, and searching through employee and company data.\n"
         "Always be clear, concise, and helpful in your replies.\n"
+        "IMPORTANT: Never use emojis in any response. Plain text only.\n"
     )
 
 
@@ -142,7 +145,7 @@ async def _get_past_context(user_id: str, current_thread_id: str) -> str:
 
 async def _handle_rag(query: str, user_id: str, thread_id: str) -> str:
     logger.info("[RAG] Handling query: '%s'", query[:80])
-    llm = get_llm()
+    llm = get_openai_llm()
 
     past_context = await _get_past_context(user_id, thread_id)
 
@@ -155,11 +158,12 @@ async def _handle_rag(query: str, user_id: str, thread_id: str) -> str:
     history_text = await format_history_from_db(thread_id, limit=20)
 
     try:
-        kb_results = await search_employees(query, top_k=15)
-        # Filter by score threshold for quality results
-        kb_results = [r for r in kb_results if r.get("score", 0) >= 0.55]
+        kb_results = await search_employees(query, top_k=5)
+        kb_results = [r for r in kb_results if r.get("score", 0) >= 0.75]
         kb_context = "\n\n".join(
-            f"[{r.get('metadata', {}).get('name', 'Employee')}]\n{r['content']}"
+            f"[{r.get('metadata', {}).get('name', 'Employee')} | "
+            f"dept: {r.get('metadata', {}).get('department', '?')} | "
+            f"position: {r.get('metadata', {}).get('position', '?')}]\n{r['content']}"
             for r in kb_results
         ) if kb_results else ""
     except Exception as e:
@@ -182,13 +186,14 @@ async def _handle_rag(query: str, user_id: str, thread_id: str) -> str:
     parts.append(
         "\n\nUSER QUESTION:\n" + query
         + "\n\n--- INSTRUCTIONS ---\n"
-        "- Answer the user's question directly and specifically.\n"
-        "- Use the EMPLOYEE KNOWLEDGE BASE as the primary source for any person/employee queries.\n"
-        "- Use conversation history and session summary for context about what was discussed.\n"
-        "- NEVER hallucinate names, roles, emails, phone numbers, or details not in the knowledge base.\n"
-        "- If the exact answer is not in the knowledge base, say: 'I don't have that information.'\n"
-        "- For employee queries: always include name, role, position, contact, email if available.\n"
-        "- Be concise, specific, and accurate.\n"
+        "- Answer ONLY what the user asked. Do not add unrequested details.\n"
+        "- If the user asks for one specific detail (e.g. email, phone, address), return ONLY that detail.\n"
+        "- Use the EMPLOYEE KNOWLEDGE BASE ONLY for questions about a specific named person's details.\n"
+        "- For general knowledge questions answer from your own knowledge — do NOT mention employees.\n"
+        "- NEVER hallucinate any name, email, phone, or detail not explicitly in the KB entries above.\n"
+        "- ONLY mention a person if their KB entry is shown above.\n"
+        "- If the answer is not in the KB, say exactly: 'I don't have that information.'\n"
+        "- Be concise. One sentence if possible.\n"
         "\nFINAL ANSWER:"
     )
 
@@ -211,7 +216,7 @@ async def _handle_rag(query: str, user_id: str, thread_id: str) -> str:
 
 async def _handle_llm_chat(query: str, user_id: str, thread_id: str) -> str:
     try:
-        llm             = get_llm()
+        llm             = get_openai_llm()
         past_context    = await _get_past_context(user_id, thread_id)
         current_summary = await get_thread_summary(thread_id)
         history_text    = await format_history_from_db(thread_id, limit=20)
@@ -255,14 +260,18 @@ async def process_query_direct(query: str, user_id: str = DEFAULT_USER) -> str:
     logger.info("[Chat:Direct] user=%s | query=%s", user_id, query[:80])
 
     thread_id = await _get_thread_id(user_id)
-    intent    = detect_intent(query)
+    intent    = await detect_intent_async(query)
     logger.info("[Chat:Direct] intent=%s", intent)
 
     if intent == "db_query":
         return await handle_db_query(query, user_id)
     if intent == "crud":
         return await handle_crud(query, user_id)
-    # email/calendar intents fall through to RAG to avoid nested flows
+    if intent == "email_read":
+        return await handle_gmail_read(query, user_id)
+    if intent == "tasks":
+        return await handle_tasks(query, user_id)
+    # email_send/calendar intents fall through to RAG to avoid nested flows
     return await _handle_rag(query, user_id, thread_id)
 
 
@@ -315,13 +324,17 @@ async def process_query(query: str, user_id: str = DEFAULT_USER) -> str:
         await _save_turn_to_mongodb(thread_id, query, reply)
         return reply
 
-    intent = detect_intent(query)
+    intent = await detect_intent_async(query)
     logger.info("[Router] Intent = %s", intent)
 
-    if intent == "email":
+    if intent == "email_send":
         reply = await handle_email_flow(query, user_id, thread_id)
     elif intent == "calendar":
         reply = await handle_calendar_flow(query, user_id, thread_id)
+    elif intent == "email_read":
+        reply = await handle_gmail_read(query, user_id)
+    elif intent == "tasks":
+        reply = await handle_tasks(query, user_id)
     elif intent == "db_query":
         reply = await handle_db_query(query, user_id)
     elif intent == "crud":

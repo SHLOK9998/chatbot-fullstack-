@@ -167,8 +167,8 @@ async def _mongo_lookup_name(name: str) -> Optional[str]:
 
 async def _mongo_group_lookup(label: str) -> list[str]:
     """
-    Resolve a role/team/dept label to a list of emails from employee_kb.
-    Pass 1: $or regex on metadata role fields
+    Resolve a department/team/position label to a list of emails from employee_kb.
+    Pass 1: $or regex on metadata department/position fields
     Pass 2: Atlas vector search filtered by label tokens
 
     IMPORTANT: Common English words (stopwords) are excluded from label_tokens
@@ -178,7 +178,7 @@ async def _mongo_group_lookup(label: str) -> list[str]:
     emails_out: list[str] = []
     seen: set = set()
     role_fields = [
-        "metadata.role", "metadata.position", "metadata.department",
+        "metadata.department", "metadata.position",
         "metadata.team", "metadata.designation", "metadata.dept", "metadata.group",
     ]
 
@@ -285,11 +285,11 @@ async def _get_schema() -> dict:
     try:
         col = get_db()["employee_kb"]
         return {
-            "roles":     [r for r in await col.distinct("metadata.role")     if r],
-            "positions": [p for p in await col.distinct("metadata.position") if p],
+            "departments": [d for d in await col.distinct("metadata.department") if d],
+            "positions":   [p for p in await col.distinct("metadata.position")   if p],
         }
     except Exception:
-        return {"roles": [], "positions": []}
+        return {"departments": [], "positions": []}
 
 
 # ── Raw string → target classification ───────────────────────────────────────
@@ -318,7 +318,7 @@ async def _classify_raw_strings(raw_list: list[str], schema: dict) -> list[dict]
 
     prompt = f"""Classify each item as a person name, role/group, or email.
 
-Available roles in DB: {schema.get("roles", [])}
+Available departments in DB: {schema.get("departments", [])}
 Available positions in DB: {schema.get("positions", [])}
 
 Items to classify: {json.dumps(remaining)}

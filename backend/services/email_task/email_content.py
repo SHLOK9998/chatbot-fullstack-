@@ -17,11 +17,11 @@ import logging
 import asyncio
 from typing import Optional, Tuple
 
-from core.dependencies import get_llm
+from core.dependencies import get_openai_llm
 from langchain_core.messages import HumanMessage
 
 logger = logging.getLogger(__name__)
-llm = get_llm()
+llm = get_openai_llm()
 
 
 async def _get_history_text(user_id: str, thread_id: Optional[str] = None) -> str:
@@ -47,19 +47,20 @@ async def generate_email_content(
     recipient_count: int = 1,
     user_id: str = "default",
     thread_id: Optional[str] = None,
-    to_name: Optional[str] = None,       # ← NEW: explicit recipient name
+    to_name: Optional[str] = None,
 ) -> Tuple[str, str]:
-    """
-    Generate an email subject and body using the LLM.
-
-    Args:
-        to_name: recipient name to use in the greeting (e.g. "Shlok", "HR Team").
-                 If None, a generic greeting is used. NEVER invented by LLM.
-
-    Returns: (subject, body)
-    """
     try:
         history_text = await _get_history_text(user_id, thread_id)
+
+        # ── Fetch sender's display name from DB ───────────────────────────────
+        sender_name = "the sender"
+        try:
+            from services.user_service import get_user_by_id
+            user = await get_user_by_id(user_id)
+            if user and user.get("display_name"):
+                sender_name = user["display_name"].strip()
+        except Exception:
+            pass
 
         # ── Build greeting instruction ────────────────────────────────────────
         # Explicit rule prevents LLM from hallucinating a name.
@@ -88,18 +89,20 @@ Rules:
 {greeting_rule}
 - Keep the content directly relevant to the purpose.
 - Do NOT invent unrelated names, roles, or extra storylines.
-- Include a greeting, main message, and a polite closing.
-- Write naturally in 2–3 short paragraphs.
+- Include a greeting, a detailed main message, and a polite closing.
+- Write at least 3–5 well-developed paragraphs with sufficient detail and context.
+- Each paragraph should be substantive — avoid one-liners. Expand on the purpose with relevant context, reasoning, or next steps.
 - Avoid placeholders (like [name], [date], [location]).
 - Mention the location only if explicitly provided: {location if location else "None"}.
 - The email will be sent to {recipient_count} recipient(s); use an appropriate greeting.
-- If the purpose implies appreciation, request, or notice — reflect that tone clearly.
+- If the purpose implies appreciation, request, or notice — reflect that tone clearly and elaborate.
 - Do not include the subject line here.
-- Be concise, factual, and consistent with user intent.
+- Be thorough, factual, and consistent with user intent — a professional email should feel complete, not rushed.
 - Do not make table or plan or timetable unless the user explicitly asked.
 - Formatting: Use strictly GitHub Flavored Markdown.
 - Tables: If the content includes schedules, lists, or structured data, use a Markdown table.
 - Structure: Ensure exactly one blank line before and after any table.
+- Closing: Always sign off with "Best regards,\n{sender_name}" — use this exact name, never a placeholder.
 
 Context from user or prior chat (for guidance):
 {context}
@@ -138,7 +141,7 @@ Email body:
             body_text = (
                 f"Dear {to_name.strip()},\n\n" if to_name
                 else "Dear Team,\n\n"
-            ) + f"This email is regarding {purpose}.\n\nBest regards,"
+            ) + f"This email is regarding {purpose}.\n\nBest regards,\n{sender_name}"
 
         logger.info("[EmailContent] Email generation completed.")
         return subject_text.strip(), body_text.strip()

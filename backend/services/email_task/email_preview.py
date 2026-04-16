@@ -43,19 +43,17 @@ def build_preview(data: dict) -> str:
         recipient = to_email or "—"
 
     preview = (
-        f" **Email Preview**\n"
-        f"{'─' * 40}\n"
-        f"**To      :** {recipient}\n"
-        f"**CC      :** {cc}\n"
-        f"**BCC     :** {bcc}\n"
-        f"**Subject :** {subject}\n"
-        f"{'─' * 40}\n"
-        f"{body}\n"
-        f"{'─' * 40}\n\n"
-        f"What would you like to do?\n"
-        f"  **Send** — confirm sending the email\n"
-        f"  **Modify** — describe what to change (e.g. 'make it shorter', 'change tone to casual')\n"
-        f"  **Cancel** — cancel sending the email"
+        f"### Email Preview\n\n"
+        f"| Field | Details |\n"
+        f"|---|---|\n"
+        f"| **To** | {recipient} |\n"
+        f"| **CC** | {cc} |\n"
+        f"| **BCC** | {bcc} |\n"
+        f"| **Subject** | {subject} |\n\n"
+        f"---\n\n"
+        f"{body}\n\n"
+        f"---\n\n"
+        f"**What would you like to do?** Send / Modify / Cancel"
     )
 
     logger.info("[EmailPreview] Preview built for recipient='%s'", to_email)

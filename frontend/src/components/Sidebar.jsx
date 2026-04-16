@@ -6,8 +6,8 @@ function ThreadItem({ thread, active, onSelect, onDelete }) {
 
   const formatDate = iso => {
     if (!iso) return ''
-    const d = new Date(iso)
-    const now = new Date()
+    const d        = new Date(iso)
+    const now      = new Date()
     const diffDays = Math.floor((now - d) / 86400000)
     if (diffDays === 0) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     if (diffDays === 1) return 'Yesterday'
@@ -57,6 +57,7 @@ export default function Sidebar({
   onOpenProfile,
   onLogout,
   loadingThreads,
+  isCurrentThreadEmpty,
 }) {
   const { user } = useAuth()
 
@@ -65,12 +66,16 @@ export default function Sidebar({
       {/* Header */}
       <div className="p-4 border-b border-slate-800">
         <div className="flex items-center gap-2 mb-4">
-          <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center text-lg">🤖</div>
-          <span className="text-white font-semibold text-sm">AI Assistant</span>
+          <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center">
+            <span className="text-white font-bold text-xs" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>AI</span>
+          </div>
+          <span className="text-white font-bold text-sm" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>AI Assistant</span>
         </div>
         <button
           onClick={onNewChat}
-          className="w-full flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium rounded-xl px-3 py-2.5 transition"
+          disabled={isCurrentThreadEmpty}
+          title={isCurrentThreadEmpty ? 'Current chat is already empty' : 'Start a new chat'}
+          className="w-full flex items-center gap-2 bg-brand-500 hover:bg-brand-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium rounded-xl px-3 py-2.5 transition"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />

@@ -36,35 +36,38 @@ def build_preview(data: dict) -> str:
     # Format start_time from ISO to human-readable
     start_display = _format_datetime(start_time)
 
-    # Format attendees
-    attendees = data.get("attendees") or []
-    if attendees:
-        lines = []
-        for a in attendees:
+    # Format attendees as a simple comma-separated string for the table cell
+    attendees_list = data.get("attendees") or []
+    if attendees_list:
+        parts = []
+        for a in attendees_list:
             name  = (a.get("name") or "").strip()
             email = (a.get("email") or "").strip()
-            if name and email and name != email:
-                lines.append(f"  • {name} <{email}>")
-            else:
-                lines.append(f"  • {email or name}")
-        attendees_display = "\n" + "\n".join(lines)
+            if name and email:
+                parts.append(f"{name} ({email})")
+            elif email:
+                parts.append(email)
+            elif name:
+                parts.append(name)
+        attendees_cell = ", ".join(parts) if parts else "None"
     else:
-        attendees_display = "None"
+        attendees_cell = "None"
 
     preview = (
-        f" **Calendar Event Preview**\n"
-        f"{'─' * 44}\n"
-        f"**Title       :** {title}\n"
-        f"**When        :** {start_display}\n"
-        f"**Location    :** {location}\n"
-        f"**Description :** {description}\n"
-        f"**Recurrence  :** {recurrence}\n"
-        f"**Attendees   :** {attendees_display}\n"
-        f"{'─' * 44}\n\n"
-        f"What would you like to do?\n"
-        f"   **Confirm** — create the event\n"
-        f"    **Modify** — change time, title, location, attendees, etc.\n"
-        f"   **Cancel** — discard this event"
+        f"### Calendar Event Preview\n\n"
+        f"| Field | Details |\n"
+        f"|---|---|\n"
+        f"| **Title** | {title} |\n"
+        f"| **When** | {start_display} |\n"
+        f"| **Location** | {location} |\n"
+        f"| **Description** | {description} |\n"
+        f"| **Recurrence** | {recurrence} |\n"
+        f"| **Attendees** | {attendees_cell} |\n\n"
+        f"---\n\n"
+        f"**What would you like to do?**\n\n"
+        f"- **Confirm** — create the event\n"
+        f"- **Modify** — change time, title, location, attendees, etc.\n"
+        f"- **Cancel** — discard this event"
     )
 
     logger.info("[CalPreview] Preview built for event='%s'", title)
