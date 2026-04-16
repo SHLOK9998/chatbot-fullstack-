@@ -42,10 +42,6 @@ def build_preview(data: dict) -> str:
     else:
         recipient = to_email or "—"
 
-    # Escape any markdown inside the body so it renders as plain text
-    # This prevents email body tables/headers from breaking the preview layout
-    safe_body = body.replace('|', '\\|').replace('#', '\\#').replace('---', '\\---').replace('**', '\\**')
-
     preview = (
         f"### Email Preview\n\n"
         f"| Field | Details |\n"
@@ -54,13 +50,10 @@ def build_preview(data: dict) -> str:
         f"| **CC** | {cc} |\n"
         f"| **BCC** | {bcc} |\n"
         f"| **Subject** | {subject} |\n\n"
-        f"**Email Body:**\n\n"
-        f"```\n{body}\n```\n\n"
         f"---\n\n"
-        f"**What would you like to do?**\n\n"
-        f"- **Send** — confirm sending the email\n"
-        f"- **Modify** — describe what to change (e.g. 'make it shorter', 'change tone to casual')\n"
-        f"- **Cancel** — cancel sending the email"
+        f"{body}\n\n"
+        f"---\n\n"
+        f"**What would you like to do?** Send / Modify / Cancel"
     )
 
     logger.info("[EmailPreview] Preview built for recipient='%s'", to_email)

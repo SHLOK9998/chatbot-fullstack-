@@ -42,9 +42,10 @@ async def send_email(data: dict, user_id: str) -> str:
             body={"raw": encoded}
         ).execute()
 
-        message_id = result.get("id", "unknown")
+        to_val = data.get('to_email')
+        to_display = ", ".join(to_val) if isinstance(to_val, list) else str(to_val)
         logger.info("[EmailSend] Sent | user=%s | msg_id=%s", user_id, message_id)
-        return f"Email sent successfully to {data.get('to_email')}!"
+        return f"Email sent successfully to {to_display}!"
 
     except RuntimeError as e:
         logger.warning("[EmailSend] Google not connected | user=%s", user_id)

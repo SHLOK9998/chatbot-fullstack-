@@ -124,17 +124,17 @@ async def _get_db_schema() -> dict:
     """
     try:
         col = get_db()["employee_kb"]
-        roles     = await col.distinct("metadata.role")
-        positions = await col.distinct("metadata.position")
-        names     = await col.distinct("metadata.name")
+        departments = await col.distinct("metadata.department")
+        positions   = await col.distinct("metadata.position")
+        names       = await col.distinct("metadata.name")
         return {
-            "roles":     [r for r in roles     if r],
-            "positions": [p for p in positions if p],
-            "names":     [n for n in names     if n],
+            "departments": [d for d in departments if d],
+            "positions":   [p for p in positions   if p],
+            "names":       [n for n in names       if n],
         }
     except Exception as e:
         logger.warning("[EmailExtract] DB schema fetch failed: %s", e)
-        return {"roles": [], "positions": [], "names": []}
+        return {"departments": [], "positions": [], "names": []}
 
 
 # ── MongoDB thread memory ─────────────────────────────────────────────────────
@@ -237,7 +237,7 @@ async def _classify_recipients(
 
     prompt = f"""You are classifying who a user wants to send an email to.
 
-Available roles in the employee database: {schema["roles"]}
+Available departments in the employee database: {schema["departments"]}
 Available positions in the employee database: {schema["positions"]}
 Some employee names in the database: {schema["names"][:30]}
 
@@ -406,7 +406,7 @@ async def _mongo_group_lookup(labels: List[str]) -> List[str]:
     seen: set = set()
 
     role_fields = [
-        "metadata.role", "metadata.position", "metadata.department",
+        "metadata.department", "metadata.position",
         "metadata.team", "metadata.designation", "metadata.dept", "metadata.group",
     ]
 

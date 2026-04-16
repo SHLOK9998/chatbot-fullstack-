@@ -8,6 +8,7 @@ Old version had no attendees in the extraction prompt, so names like
 were completely ignored. Now they are captured as raw_attendees and
 passed to ask_attendees for MongoDB resolution.
 """
+import asyncio
 import json
 import logging
 import re
@@ -85,7 +86,7 @@ async def extract_calendar_fields(
     llm = get_llm()
     fields: dict = {}
     try:
-        resp = llm.invoke([HumanMessage(content=prompt)])
+        resp = await asyncio.to_thread(llm.invoke, [HumanMessage(content=prompt)])
         raw = (getattr(resp, "content", "") or "").strip()
         raw = re.sub(r"```(?:json)?", "", raw).strip("` \n\r\t")
         fields = json.loads(raw)

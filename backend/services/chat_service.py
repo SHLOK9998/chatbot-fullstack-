@@ -2,8 +2,8 @@
 import asyncio
 import logging
 
-from core.dependencies import get_llm
-from utils.intent_detector import detect_intent
+from core.dependencies import get_llm, get_openai_llm
+from utils.intent_detector import detect_intent, detect_intent_async
 
 from services.thread_service import (
     create_new_thread,
@@ -145,7 +145,7 @@ async def _get_past_context(user_id: str, current_thread_id: str) -> str:
 
 async def _handle_rag(query: str, user_id: str, thread_id: str) -> str:
     logger.info("[RAG] Handling query: '%s'", query[:80])
-    llm = get_llm()
+    llm = get_openai_llm()
 
     past_context = await _get_past_context(user_id, thread_id)
 
@@ -158,11 +158,12 @@ async def _handle_rag(query: str, user_id: str, thread_id: str) -> str:
     history_text = await format_history_from_db(thread_id, limit=20)
 
     try:
-        kb_results = await search_employees(query, top_k=15)
-        # Filter by score threshold for quality results
-        kb_results = [r for r in kb_results if r.get("score", 0) >= 0.55]
+        kb_results = await search_employees(query, top_k=5)
+        kb_results = [r for r in kb_results if r.get("score", 0) >= 0.75]
         kb_context = "\n\n".join(
-            f"[{r.get('metadata', {}).get('name', 'Employee')}]\n{r['content']}"
+            f"[{r.get('metadata', {}).get('name', 'Employee')} | "
+            f"dept: {r.get('metadata', {}).get('department', '?')} | "
+            f"position: {r.get('metadata', {}).get('position', '?')}]\n{r['content']}"
             for r in kb_results
         ) if kb_results else ""
     except Exception as e:
@@ -185,13 +186,14 @@ async def _handle_rag(query: str, user_id: str, thread_id: str) -> str:
     parts.append(
         "\n\nUSER QUESTION:\n" + query
         + "\n\n--- INSTRUCTIONS ---\n"
-        "- Answer the user's question directly and specifically.\n"
-        "- The EMPLOYEE KNOWLEDGE BASE contains company staff data. Use it ONLY if the user is asking about a specific person, employee, team, role, salary, contact, or company-internal information.\n"
-        "- For general knowledge questions (technology, coding, concepts, how-to, etc.) answer from your own knowledge — do NOT mention employees or company data.\n"
-        "- NEVER suggest or recommend employees as a response to a general question.\n"
-        "- NEVER hallucinate names, roles, emails, phone numbers, or details not in the knowledge base.\n"
-        "- If the exact answer is not in the knowledge base for an employee query, say: 'I don't have that information.'\n"
-        "- Be concise, specific, and accurate.\n"
+        "- Answer ONLY what the user asked. Do not add unrequested details.\n"
+        "- If the user asks for one specific detail (e.g. email, phone, address), return ONLY that detail.\n"
+        "- Use the EMPLOYEE KNOWLEDGE BASE ONLY for questions about a specific named person's details.\n"
+        "- For general knowledge questions answer from your own knowledge — do NOT mention employees.\n"
+        "- NEVER hallucinate any name, email, phone, or detail not explicitly in the KB entries above.\n"
+        "- ONLY mention a person if their KB entry is shown above.\n"
+        "- If the answer is not in the KB, say exactly: 'I don't have that information.'\n"
+        "- Be concise. One sentence if possible.\n"
         "\nFINAL ANSWER:"
     )
 
@@ -214,7 +216,7 @@ async def _handle_rag(query: str, user_id: str, thread_id: str) -> str:
 
 async def _handle_llm_chat(query: str, user_id: str, thread_id: str) -> str:
     try:
-        llm             = get_llm()
+        llm             = get_openai_llm()
         past_context    = await _get_past_context(user_id, thread_id)
         current_summary = await get_thread_summary(thread_id)
         history_text    = await format_history_from_db(thread_id, limit=20)
@@ -258,7 +260,7 @@ async def process_query_direct(query: str, user_id: str = DEFAULT_USER) -> str:
     logger.info("[Chat:Direct] user=%s | query=%s", user_id, query[:80])
 
     thread_id = await _get_thread_id(user_id)
-    intent    = detect_intent(query)
+    intent    = await detect_intent_async(query)
     logger.info("[Chat:Direct] intent=%s", intent)
 
     if intent == "db_query":
@@ -322,7 +324,7 @@ async def process_query(query: str, user_id: str = DEFAULT_USER) -> str:
         await _save_turn_to_mongodb(thread_id, query, reply)
         return reply
 
-    intent = detect_intent(query)
+    intent = await detect_intent_async(query)
     logger.info("[Router] Intent = %s", intent)
 
     if intent == "email_send":

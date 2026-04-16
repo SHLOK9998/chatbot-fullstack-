@@ -167,7 +167,7 @@ class EmbeddingService:
 #     },
 #     {
 #       "type": "filter",
-#       "path": "metadata.role"
+#       "path": "metadata.department"
 #     },
 #     {
 #       "type": "filter",

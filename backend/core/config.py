@@ -19,10 +19,11 @@ class Settings:
     # LLM credentials (Groq)
     GROQ_API_KEY     = os.getenv("GROQ_API_KEY")
     MODEL_NAME       = os.getenv("MODEL_NAME", "llama-3.1-8b-instant")
-
+    OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", "openai/gpt-oss-20b")
+    API_FOR_OPENAI = os.getenv("API_FOR_OPENAI")
     # Embedding model (Gemini)
     GEMINI_API_KEY   = os.getenv("GEMINI_API_KEY")
-    EMBED_MODEL      = os.getenv("EMBED_MODEL", "gemini/embedding-001")
+    EMBED_MODEL      = os.getenv("EMBED_MODEL")
 
     # OAuth client secrets file (downloaded from Google Cloud Console)
     GOOGLE_CREDENTIALS_FILE = project_root / os.getenv("GOOGLE_CREDENTIALS_FILE", "creden/credentials.json")
@@ -55,7 +56,7 @@ class Settings:
 
     # JWT auth — sliding session
     JWT_SECRET      = os.getenv("JWT_SECRET", "change-this-secret-in-production")
-    JWT_EXPIRE_DAYS = int(os.getenv("JWT_EXPIRE_DAYS", "30"))
+    JWT_EXPIRE_DAYS = int(os.getenv("JWT_EXPIRE_DAYS"))
 
 
 settings = Settings()

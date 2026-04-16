@@ -251,6 +251,47 @@ async def reset():
     return {"status": "acknowledged"}
 
 
+# ── GET /chat/debug/kb — inspect employee_kb schema values ───────────────────
+
+@router.get("/debug/kb")
+async def debug_kb(user_id: str = Depends(get_current_user)):
+    """
+    Returns every distinct metadata value stored in employee_kb.
+    Use this to diagnose why filters are not matching — e.g. position
+    values that are not exactly 'Intern', stale documents with old schema, etc.
+    """
+    from core.database import get_db
+    db         = get_db()
+    collection = db["employee_kb"]
+
+    departments = await collection.distinct("metadata.department")
+    positions   = await collection.distinct("metadata.position")
+    addresses   = await collection.distinct("metadata.address")
+    names       = await collection.distinct("metadata.name")
+    total       = await collection.count_documents({})
+
+    # Show every document's name + position + department so mismatches are visible
+    cursor = collection.find({}, {"metadata.name": 1, "metadata.position": 1, "metadata.department": 1, "_id": 0})
+    docs   = await cursor.to_list(length=500)
+    rows   = [
+        {
+            "name":       d.get("metadata", {}).get("name", ""),
+            "position":   d.get("metadata", {}).get("position", ""),
+            "department": d.get("metadata", {}).get("department", ""),
+        }
+        for d in docs
+    ]
+
+    return {
+        "total_documents": total,
+        "distinct_departments": sorted([d for d in departments if d]),
+        "distinct_positions":   sorted([p for p in positions   if p]),
+        "distinct_addresses":   sorted([a for a in addresses   if a]),
+        "distinct_names":       sorted([n for n in names       if n]),
+        "all_employees":        rows,
+    }
+
+
 # =============================================================================
 # NEW ENDPOINTS — added below; existing endpoints above are UNCHANGED
 # =============================================================================

@@ -27,14 +27,14 @@ BEFORE YOU USE THIS — ATLAS INDEX REQUIRED:
         "numDimensions": 768,
         "similarity": "cosine"
       },
-      { "type": "filter", "path": "metadata.role" },
+      { "type": "filter", "path": "metadata.department" },
       { "type": "filter", "path": "metadata.position" },
       { "type": "filter", "path": "metadata.address" }
     ]
   }
   Name it: "employee_vector_index"
 
-  numDimensions=768 because Gemini "models/embedding-001" produces 768-dim vectors.
+  numDimensions=3072 because Gemini "gemini-embedding-001" produces 3072-dim vectors.
 """
 
 import logging
@@ -58,21 +58,21 @@ async def search_employees(
         query   : the user's natural language question
         top_k   : how many results to return (default 5)
         filters : optional metadata pre-filter dict
-                  e.g. {"metadata.role": "Full Stack"}
+                  e.g. {"metadata.department": "aiml"}
                   e.g. {"metadata.position": "Intern"}
                   Filters narrow the search BEFORE vector similarity runs.
 
     Returns:
         List of dicts, each with:
           - content  : the employee text content
-          - metadata : name, role, position, address, email, contact
+          - metadata : name, department, position, address, email, contact
           - score    : similarity score (0.0 to 1.0, higher = more similar)
 
     Example return:
         [
           {
-            "content": "Anand Vaghela is a Full Stack Intern located in Botad...",
-            "metadata": {"name": "Anand", "role": "Full Stack", ...},
+            "content": "Anand Vaghela is an Intern in the Full Stack department...",
+            "metadata": {"name": "anand", "department": "full stack", ...},
             "score": 0.92
           },
           ...
@@ -152,27 +152,17 @@ async def search_employees(
 
 async def search_employees_with_filter(
     query: str,
-    role: Optional[str] = None,
+    department: Optional[str] = None,
     position: Optional[str] = None,
     address: Optional[str] = None,
     top_k: int = 5,
 ) -> list[dict]:
     """
     Convenience wrapper for filtered employee search.
-
-    Instead of building the filter dict manually, pass named parameters.
-    Used when you know specific metadata to filter by — e.g. from CRUD intent.
-
-    Example:
-        results = await search_employees_with_filter(
-            query="who is the intern",
-            position="Intern",
-            top_k=3
-        )
     """
     filters = {}
-    if role:
-        filters["metadata.role"] = role
+    if department:
+        filters["metadata.department"] = department
     if position:
         filters["metadata.position"] = position
     if address:
