@@ -272,9 +272,6 @@ async def _sse_response_stream(response_dict: dict) -> AsyncIterator[str]:
         payload = json.dumps(response_dict)
         yield f"event: message\ndata: {payload}\n\n"
 
-    # Signal end of stream — MCP spec requires this
-    yield "event: message\ndata: [DONE]\n\n"
-
 
 # ── Main POST /mcp endpoint ───────────────────────────────────────────────────
 

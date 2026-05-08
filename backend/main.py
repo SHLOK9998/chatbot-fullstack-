@@ -70,11 +70,13 @@ async def lifespan(app: FastAPI):
 
     # ── SHUTDOWN ───────────────────────────────────────────────────────────────
 
-    logger.info("=== Session ending | user=%s | flushing summary... ===", DEFAULT_USER)
-    await end_session(DEFAULT_USER)
-
-    await close_redis()
-    await close_db()
+    try:
+        logger.info("=== Session ending | user=%s | flushing summary... ===", DEFAULT_USER)
+        await end_session(DEFAULT_USER)
+        await close_redis()
+        await close_db()
+    except asyncio.CancelledError:
+        pass
 
 
 app = FastAPI(
