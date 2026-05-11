@@ -7,6 +7,7 @@ Uses tasks scope.
 import asyncio
 import logging
 import re
+from datetime import datetime, timezone
 from typing import Optional
 
 from googleapiclient.discovery import build
@@ -51,44 +52,73 @@ async def handle_tasks(query: str, user_id: str) -> str:
 
 
 async def _list_tasks(service, user_id: str) -> str:
-    """List all pending tasks from the default task list."""
+    """List all pending tasks from the default task list with formatted output."""
     try:
         result = await asyncio.to_thread(
             lambda: service.tasks().list(
                 tasklist="@default",
                 showCompleted=False,
-                maxResults=10,
+                showHidden=False,
+                maxResults=20,
             ).execute()
         )
 
         items = result.get("items", [])
         if not items:
-            return "You have no pending tasks."
+            return "You have no pending tasks. To add one, say \"Add task: review the Q3 report\"."
 
-        lines = ["### Your Tasks\n"]
+        # Sort by due date if available
+        def due_key(t):
+            return t.get("due", "9999")
+        items.sort(key=due_key)
+
+        lines = [f"**Your tasks** ({len(items)} pending)\n"]
+        today = datetime.now(timezone.utc).date()
+
         for i, task in enumerate(items, 1):
             title = task.get("title", "(untitled)")
             due   = task.get("due", "")
-            due_str = f" — Due: {due[:10]}" if due else ""
-            lines.append(f"{i}. {title}{due_str}")
+            notes = task.get("notes", "")
 
+            if due:
+                try:
+                    due_date = datetime.fromisoformat(due.replace("Z", "+00:00")).date()
+                    days_left = (due_date - today).days
+                    if days_left < 0:
+                        due_str = f"Overdue ({due_date.strftime('%b %d')})"
+                    elif days_left == 0:
+                        due_str = "Due today"
+                    elif days_left == 1:
+                        due_str = "Due tomorrow"
+                    else:
+                        due_str = f"Due {due_date.strftime('%b %d')}"
+                except Exception:
+                    due_str = f"Due: {due[:10]}"
+            else:
+                due_str = "No due date"
+
+            lines.append(f"{i}. **{title}**\n   {due_str}")
+            if notes:
+                lines.append(f"   _{notes[:80]}_")
+
+        lines.append("\nSay \"complete [task name]\" to mark a task done, or \"add task: [description]\" to add a new one.")
         return "\n".join(lines)
 
     except Exception as e:
         logger.error("[Tasks] List failed | user=%s | %s", user_id, e)
-        return f"Failed to fetch tasks: {str(e)}"
+        return "I couldn't fetch your tasks right now. Please try again in a moment."
 
 
 async def _add_task(service, query: str, user_id: str) -> str:
     """Extract task title from query and create it."""
-    # Strip action words to get the task title
+    # Strip action prefix
     title = re.sub(
-        r"(?i)^(add|create|new task|remind me to|todo|to-do|add a task|add task)\s*",
+        r"(?i)^(add\s+a?\s*task:?\s*|create\s+a?\s*(task|to-?do):?\s*|remind\s+me\s+to\s*|todo\s*|to-do\s*|new task\s*)",
         "", query
     ).strip()
 
     if not title:
-        return "What task would you like to add? Please provide a title."
+        return "What task would you like to add? Try: \"Add task: review the Q3 report\""
 
     try:
         result = await asyncio.to_thread(
@@ -98,23 +128,23 @@ async def _add_task(service, query: str, user_id: str) -> str:
             ).execute()
         )
         logger.info("[Tasks] Task created | user=%s | title=%s", user_id, title)
-        return f"Task added: **{title}**"
+        return f"Task added: **{title}**\n\nSay \"show my tasks\" to see all pending tasks."
 
     except Exception as e:
         logger.error("[Tasks] Add failed | user=%s | %s", user_id, e)
-        return f"Failed to add task: {str(e)}"
+        return "I couldn't add the task right now. Please try again."
 
 
 async def _complete_task(service, query: str, user_id: str) -> str:
-    """Find a task by partial title match and mark it complete."""
+    """Find a task by partial title match and mark it complete, with disambiguation."""
     # Extract task name from query
     title_hint = re.sub(
-        r"(?i)^(complete|done|finish|mark|mark as done|completed)\s*",
+        r"(?i)^(complete|done|finish|mark\s+(as\s+)?(done|complete|finished))\s*",
         "", query
     ).strip()
 
     if not title_hint:
-        return "Which task would you like to mark as complete?"
+        return "Which task would you like to mark as complete? Say \"complete [task name]\"."
 
     try:
         # List tasks to find a match
@@ -127,14 +157,24 @@ async def _complete_task(service, query: str, user_id: str) -> str:
         )
 
         items = result.get("items", [])
-        match = next(
-            (t for t in items if title_hint.lower() in t.get("title", "").lower()),
-            None
-        )
 
-        if not match:
-            return f"No pending task found matching '{title_hint}'."
+        # Find all matches, not just the first
+        matches = [t for t in items if title_hint.lower() in t.get("title", "").lower()]
 
+        if not matches:
+            return (
+                f"No pending task found matching \"{title_hint}\".\n\n"
+                f"Say \"show my tasks\" to see your full list."
+            )
+
+        if len(matches) > 1:
+            task_list = "\n".join(f"{i+1}. {m['title']}" for i, m in enumerate(matches))
+            return (
+                f"I found {len(matches)} tasks matching \"{title_hint}\":\n\n{task_list}\n\n"
+                f"Please be more specific — say \"complete\" followed by the exact title."
+            )
+
+        match = matches[0]
         await asyncio.to_thread(
             lambda: service.tasks().update(
                 tasklist="@default",
@@ -144,8 +184,8 @@ async def _complete_task(service, query: str, user_id: str) -> str:
         )
 
         logger.info("[Tasks] Task completed | user=%s | title=%s", user_id, match["title"])
-        return f"Task marked as complete: **{match['title']}**"
+        return f"Marked as complete: **{match['title']}**"
 
     except Exception as e:
         logger.error("[Tasks] Complete failed | user=%s | %s", user_id, e)
-        return f"Failed to complete task: {str(e)}"
+        return "I couldn't update the task right now. Please try again."

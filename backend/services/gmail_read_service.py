@@ -28,32 +28,19 @@ async def handle_gmail_read(query: str, user_id: str) -> str:
             "Click the **Connect Google** button at the top of the chat to get started."
         )
 
-    # Determine what the user wants
     query_lower = query.lower()
 
+    # Parse how many the user wants (e.g. "show 15 emails")
+    count_match = re.search(r"\b(\d+)\s*(email|mail|message)s?\b", query_lower)
+    max_results = int(count_match.group(1)) if count_match else 10
+    max_results = min(max_results, 25)  # cap to avoid huge API bills
+
     # Build Gmail search query from user intent
-    if "unread" in query_lower:
-        gmail_query = "is:unread"
-        label = "Unread emails"
-    elif "today" in query_lower:
-        gmail_query = "newer_than:1d"
-        label = "Today's emails"
-    elif "from" in query_lower:
-        # Extract name/email after "from"
-        match = re.search(r"from\s+([a-zA-Z0-9@._\s]+)", query_lower)
-        sender = match.group(1).strip() if match else ""
-        gmail_query = f"from:{sender}" if sender else "is:inbox"
-        label = f"Emails from {sender}" if sender else "Inbox emails"
-    elif any(w in query_lower for w in ["reply", "replied", "response"]):
-        gmail_query = "is:inbox newer_than:7d"
-        label = "Recent inbox emails"
-    else:
-        gmail_query = "is:inbox"
-        label = "Inbox emails"
+    gmail_query, label = _build_gmail_query(query_lower)
 
     try:
         results = await asyncio.to_thread(
-            _fetch_emails, service, gmail_query, max_results=5
+            _fetch_emails, service, gmail_query, max_results=max_results
         )
     except Exception as e:
         logger.error("[GmailRead] Fetch failed | user=%s | %s", user_id, e)
@@ -63,19 +50,61 @@ async def handle_gmail_read(query: str, user_id: str) -> str:
         return f"No emails found for: {label}."
 
     # Format as markdown
-    lines = [f"### {label}\n"]
+    lines = [f"**{label}** ({len(results)} found)\n"]
     for i, msg in enumerate(results, 1):
         sender  = msg.get("from", "Unknown")
         subject = msg.get("subject", "(no subject)")
         date    = msg.get("date", "")
         snippet = msg.get("snippet", "")
+        date_short = date[:16] if date else ""
         lines.append(
             f"**{i}. {subject}**\n"
-            f"From: {sender} | {date}\n"
-            f"{snippet}\n"
+            f"From: {sender}\n"
+            f"Date: {date_short}\n"
+            f"_{snippet}_\n"
         )
 
     return "\n---\n".join(lines)
+
+
+def _build_gmail_query(query_lower: str) -> tuple:
+    """Returns (gmail_query_string, human_readable_label)."""
+
+    if "unread" in query_lower:
+        return "is:unread", "Unread emails"
+
+    if "today" in query_lower:
+        return "newer_than:1d", "Today's emails"
+
+    if "this week" in query_lower:
+        return "newer_than:7d", "This week's emails"
+
+    if "attachment" in query_lower or "attached" in query_lower:
+        return "has:attachment", "Emails with attachments"
+
+    if "starred" in query_lower or "important" in query_lower:
+        return "is:starred", "Starred emails"
+
+    # from: support — handles email addresses AND names
+    from_match = re.search(r"\bfrom\s+([^\s,]+(?:\s+[^\s,]+)*)", query_lower)
+    if from_match:
+        sender = from_match.group(1).strip()
+        return f"from:{sender}", f"Emails from {sender}"
+
+    # about/subject support
+    about_match = re.search(r"\b(?:about|subject|regarding|re:?)\s+(.+)", query_lower)
+    if about_match:
+        topic = about_match.group(1).strip().split()[0]
+        return f"subject:{topic}", f"Emails about {topic}"
+
+    # replied to / response check
+    if any(w in query_lower for w in ["reply", "replied", "response", "responded"]):
+        name_match = re.search(r"(?:from|by)\s+(\w+)", query_lower)
+        if name_match:
+            return f"from:{name_match.group(1)} is:inbox", f"Replies from {name_match.group(1)}"
+        return "is:inbox newer_than:7d", "Recent inbox emails"
+
+    return "is:inbox", "Inbox emails"
 
 
 def _fetch_emails(service, gmail_query: str, max_results: int = 5) -> list[dict]:

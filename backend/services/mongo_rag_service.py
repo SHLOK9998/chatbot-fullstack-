@@ -44,7 +44,14 @@ from core.database import get_db
 from services.embedding_service import EmbeddingService
 
 logger = logging.getLogger(__name__)
-embedding_service = EmbeddingService()
+
+# Lazy singleton — avoids creating a separate EmbeddingService instance at import time
+_embedding_service = None
+def _get_embedding_service() -> EmbeddingService:
+    global _embedding_service
+    if _embedding_service is None:
+        _embedding_service = EmbeddingService()
+    return _embedding_service
 
 async def search_employees(
     query: str,
@@ -86,7 +93,7 @@ async def search_employees(
     # This is the same Gemini model used during ingestion,
     # so the vectors are in the same space and can be compared.
     logger.info("[RAG] Embedding query: '%s'", query[:60])
-    query_vector = await embedding_service.get_embedding(query)
+    query_vector = await _get_embedding_service().get_embedding(query)
 
     if not query_vector:
         logger.error("[RAG] Failed to embed query — returning no results.")
@@ -101,7 +108,7 @@ async def search_employees(
             "index":         "employee_vector_index",  # must match the index name in Atlas
             "path":          "embedding",              # role in the document that holds the vector
             "queryVector":   query_vector,             # your query as a vector
-            "numCandidates": top_k * 10,               # pre-selection pool size
+            "numCandidates": max(top_k * 20, 100),   # wider pool for better recall
             "limit":         top_k,                    # final result count
         }
     }

@@ -77,9 +77,14 @@ def _build_system_prompt() -> str:
     return (
         'You are "Personal Assistant" — a smart, reliable, and friendly AI assistant.\n'
         "You help with answering questions, sending and reading emails, managing calendar events, "
-        "managing personal tasks, and searching through employee and company data.\n"
-        "Always be clear, concise, and helpful in your replies.\n"
-        "IMPORTANT: Never use emojis in any response. Plain text only.\n"
+        "managing personal tasks, and searching through employee and company data.\n\n"
+        "RESPONSE FORMATTING RULES:\n"
+        "- For simple factual answers (a name, a date, a number): respond in 1-2 sentences.\n"
+        "- For explanations, how-to questions, or multi-part topics: use bullet points, numbered steps, "
+        "and headers where helpful. Structure the response clearly.\n"
+        "- For code questions: always use code blocks.\n"
+        "- Never use emojis.\n"
+        "- Match the depth of the answer to the complexity of the question.\n"
     )
 
 
@@ -159,7 +164,7 @@ async def _handle_rag(query: str, user_id: str, thread_id: str) -> str:
 
     try:
         kb_results = await search_employees(query, top_k=5)
-        kb_results = [r for r in kb_results if r.get("score", 0) >= 0.75]
+        kb_results = [r for r in kb_results if r.get("score", 0) >= 0.60]
         kb_context = "\n\n".join(
             f"[{r.get('metadata', {}).get('name', 'Employee')} | "
             f"dept: {r.get('metadata', {}).get('department', '?')} | "
@@ -186,14 +191,15 @@ async def _handle_rag(query: str, user_id: str, thread_id: str) -> str:
     parts.append(
         "\n\nUSER QUESTION:\n" + query
         + "\n\n--- INSTRUCTIONS ---\n"
-        "- Answer ONLY what the user asked. Do not add unrequested details.\n"
-        "- If the user asks for one specific detail (e.g. email, phone, address), return ONLY that detail.\n"
-        "- Use the EMPLOYEE KNOWLEDGE BASE ONLY for questions about a specific named person's details.\n"
-        "- For general knowledge questions answer from your own knowledge — do NOT mention employees.\n"
+        "- Use the EMPLOYEE KNOWLEDGE BASE for questions about specific people's details.\n"
+        "- For general knowledge questions, answer from your own knowledge — do NOT mention employees.\n"
         "- NEVER hallucinate any name, email, phone, or detail not explicitly in the KB entries above.\n"
         "- ONLY mention a person if their KB entry is shown above.\n"
         "- If the answer is not in the KB, say exactly: 'I don't have that information.'\n"
-        "- Be concise. One sentence if possible.\n"
+        "- If the user asks for one specific detail (e.g. email, phone, address), return ONLY that detail.\n"
+        "- If the user asks an open question (explain, describe, how does, list), give a full structured answer.\n"
+        "- Match answer length to question complexity. Short questions get short answers. "
+        "Open questions get structured, detailed answers with bullet points or numbered steps where appropriate.\n"
         "\nFINAL ANSWER:"
     )
 
@@ -233,7 +239,12 @@ async def _handle_llm_chat(query: str, user_id: str, thread_id: str) -> str:
 
         messages = [
             SystemMessage(content="".join(parts)),
-            HumanMessage(content=query),
+            HumanMessage(content=(
+                query + "\n\n"
+                "[Format your response appropriately: use bullet points for lists, "
+                "numbered steps for sequences, code blocks for code, "
+                "and headers for multi-section answers. Plain prose for simple questions.]"
+            )),
         ]
 
         response = await asyncio.to_thread(llm.invoke, messages)

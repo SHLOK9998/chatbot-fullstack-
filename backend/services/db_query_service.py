@@ -6,14 +6,25 @@ import re
 
 from core.database import get_db
 from core.dependencies import get_llm
+from core.redis_client import get_redis
 from langchain_core.messages import HumanMessage
 
 logger = logging.getLogger(__name__)
 
 
-# ── Step 0: Fetch live schema values from MongoDB ─────────────────────────────
+# ── Step 0: Fetch live schema values from MongoDB (cached in Redis) ───────────
 
 async def _get_schema_values() -> dict:
+    # Try Redis cache first (avoids 4 distinct() calls per query)
+    r = get_redis()
+    if r:
+        try:
+            cached = await r.get("db_schema_cache")
+            if cached:
+                return json.loads(cached)
+        except Exception:
+            pass
+
     db         = get_db()
     collection = db["employee_kb"]
 
@@ -22,12 +33,31 @@ async def _get_schema_values() -> dict:
     addresses   = await collection.distinct("metadata.address")
     names       = await collection.distinct("metadata.name")
 
-    return {
+    schema = {
         "departments": sorted([d for d in departments if d]),
         "positions":   sorted([p for p in positions   if p]),
         "addresses":   sorted([a for a in addresses   if a]),
         "names":       sorted([n for n in names       if n]),
     }
+
+    # Cache for 10 minutes
+    if r:
+        try:
+            await r.set("db_schema_cache", json.dumps(schema), ex=600)
+        except Exception:
+            pass
+
+    return schema
+
+
+async def invalidate_schema_cache():
+    """Delete cached schema values. Call after employee add/update/delete."""
+    r = get_redis()
+    if r:
+        try:
+            await r.delete("db_schema_cache")
+        except Exception:
+            pass
 
 
 # ── Step 1: LLM filter extraction ─────────────────────────────────────────────

@@ -46,6 +46,15 @@ from server import mount_mcp
 logger = logging.getLogger(__name__)
 
 
+async def _background_ingest():
+    """Run knowledge base ingestion in background so startup isn't blocked."""
+    try:
+        await asyncio.to_thread(initialize_knowledge_base)
+        logger.info("Background ingestion complete.")
+    except Exception as e:
+        logger.error("Background ingestion failed: %s", e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # ── STARTUP ────────────────────────────────────────────────────────────────
@@ -58,12 +67,12 @@ async def lifespan(app: FastAPI):
     # 2. Redis (optional — skips silently if REDIS_URL not set)
     await connect_redis()
 
-    # 3. Load Excel knowledge base into MongoDB
-    await asyncio.to_thread(initialize_knowledge_base)
-
-    # 4. Create a fresh thread for this server session
+    # 3. Create a fresh thread for this server session
     thread_id = await initialize_session(DEFAULT_USER)
     logger.info("=== New session | user=%s | thread=%s ===", DEFAULT_USER, thread_id)
+
+    # 4. Load Excel knowledge base in background (non-blocking)
+    asyncio.create_task(_background_ingest())
 
     # ── APP RUNS HERE ──────────────────────────────────────────────────────────
     yield

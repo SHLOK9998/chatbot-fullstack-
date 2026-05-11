@@ -8,10 +8,18 @@ from datetime import datetime, timezone
 from core.database import get_db
 from core.dependencies import get_llm
 from services.embedding_service import EmbeddingService
+from services.db_query_service import invalidate_schema_cache
 from langchain_core.messages import HumanMessage
 
 logger = logging.getLogger(__name__)
-embedding_service = EmbeddingService()
+
+# Lazy singleton — avoids creating EmbeddingService at import time
+_embedding_service = None
+def _get_embedding_service() -> EmbeddingService:
+    global _embedding_service
+    if _embedding_service is None:
+        _embedding_service = EmbeddingService()
+    return _embedding_service
 
 _REQUIRED_ADD_FIELDS = ["name", "email", "department", "position", "contact"]
 
@@ -73,13 +81,14 @@ def _build_content_text(data: dict) -> str:
     slackid    = data.get('slackid', '')
     github     = data.get('github', '')
     linkedin   = data.get('linkedin', '')
+    # Multi-perspective content — matches the ingestion format for consistent embeddings
     return (
-        f"{name} {middle} {lastname} is a "
-        f"{position} in the {department} department. "
-        f"For contact, reach them at {email} or {contact}. "
-        f"Their address is {address}. "
-        f"Connect via Slack: {slackid}, "
-        f"GitHub: {github}, LinkedIn: {linkedin}."
+        f"Employee profile: {name} {middle} {lastname}.\n"
+        f"Role: {position} in the {department} department.\n"
+        f"Location: {address}.\n"
+        f"Contact: Email is {email}, phone is {contact}.\n"
+        f"Online: Slack @{slackid}, GitHub @{github}, LinkedIn @{linkedin}.\n"
+        f"Keywords: {department} {position} {address} {name}"
     ).strip()
 
 
@@ -121,7 +130,7 @@ async def _add_employee(data: dict) -> str:
 
     content = _build_content_text(data)
     try:
-        embedding = await embedding_service.get_embedding(content)
+        embedding = await _get_embedding_service().get_embedding(content)
     except Exception as e:
         logger.error("[CRUD] Embedding failed for new employee: %s", e)
         embedding = []
@@ -135,6 +144,7 @@ async def _add_employee(data: dict) -> str:
     }
 
     await collection.insert_one(doc)
+    await invalidate_schema_cache()
     logger.info("[CRUD] Added new employee: %s", data.get("name"))
 
     name       = data.get("name")
@@ -174,7 +184,7 @@ async def _update_employee(find_by: dict, update_fields: dict) -> str:
 
     new_content = _build_content_text(current_metadata)
     try:
-        new_embedding = await embedding_service.get_embedding(new_content)
+        new_embedding = await _get_embedding_service().get_embedding(new_content)
     except Exception as e:
         logger.error("[CRUD] Re-embedding failed for update: %s", e)
         new_embedding = existing.get("embedding", [])
@@ -184,6 +194,7 @@ async def _update_employee(find_by: dict, update_fields: dict) -> str:
         set_payload[f"metadata.{key}"] = value
 
     await collection.update_one({"_id": existing["_id"]}, {"$set": set_payload})
+    await invalidate_schema_cache()
 
     name               = current_metadata.get("name", "Employee")
     updated_fields_str = ", ".join(f"{k}={v}" for k, v in update_fields.items())
@@ -209,6 +220,7 @@ async def _delete_employee(find_by: dict) -> str:
 
     name = existing.get("metadata", {}).get("name", "Unknown")
     await collection.delete_one({"_id": existing["_id"]})
+    await invalidate_schema_cache()
 
     logger.info("[CRUD] Deleted employee: %s", name)
     return f"✅ Employee '{name}' has been deleted from the database."

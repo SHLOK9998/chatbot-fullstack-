@@ -47,7 +47,13 @@ SUPPORTED_EXCEL_EXT = {".xls", ".xlsx"}
 # Ensure the knowledge folder exists at startup
 USER_KNOWLEDGE.mkdir(parents=True, exist_ok=True)
 
-embedding_service = EmbeddingService()
+# ── Lazy-init singletons ───────────────────────────────────────────────────────
+_embedding_service = None
+def get_embedding_service() -> EmbeddingService:
+    global _embedding_service
+    if _embedding_service is None:
+        _embedding_service = EmbeddingService()
+    return _embedding_service
 
 
 # ── File hash ──────────────────────────────────────────────────────────────────
@@ -67,15 +73,21 @@ def _md5(file_path: Path) -> str:
 
 # ── MongoDB manifest (sync pymongo) ───────────────────────────────────────────
 
+_sync_client = None
+_sync_db_handle = None
+
 def _get_sync_db():
     """
-    Return a sync pymongo database handle.
+    Return a reusable sync pymongo database handle.
     Used only inside ingestion (which runs in a thread, not the async event loop).
-    We create a fresh client each time to avoid connection-state issues in threads.
+    Reuses a single client to avoid cold-start TCP connection costs on every call.
     """
-    import pymongo
-    client = pymongo.MongoClient(settings.MONGO_URL, serverSelectionTimeoutMS=5000)
-    return client, client[settings.MONGO_DB_NAME]
+    global _sync_client, _sync_db_handle
+    if _sync_client is None:
+        import pymongo
+        _sync_client = pymongo.MongoClient(settings.MONGO_URL, serverSelectionTimeoutMS=5000)
+        _sync_db_handle = _sync_client[settings.MONGO_DB_NAME]
+    return _sync_client, _sync_db_handle
 
 
 def _get_manifest(filename: str) -> Optional[str]:
@@ -86,7 +98,6 @@ def _get_manifest(filename: str) -> Optional[str]:
     try:
         client, db = _get_sync_db()
         doc = db["ingestion_manifest"].find_one({"filename": filename})
-        client.close()
         return doc["md5"] if doc else None
     except Exception as e:
         logger.warning("[Ingestion] Could not read manifest: %s", e)
@@ -105,7 +116,6 @@ def _save_manifest(filename: str, md5: str) -> None:
             {"$set": {"md5": md5, "updated_at": datetime.now(timezone.utc)}},
             upsert=True,
         )
-        client.close()
         logger.info("[Ingestion] Manifest saved for '%s'", filename)
     except Exception as e:
         logger.error("[Ingestion] Could not save manifest: %s", e)
@@ -165,13 +175,14 @@ def _excel_to_row_documents(excel_path: Path) -> List[Tuple[str, dict]]:
             or f"auto_{uuid.uuid5(uuid.NAMESPACE_OID, f'{excel_path.name}_{idx}')}"
         )
 
+        # Multi-perspective content — helps semantic retrieval from different query angles
         content = (
-            f"{name} {middle_name} {lastname} is a "
-            f"{position} in the {department} department. "
-            f"For contact, reach them at {email} or {contact}. "
-            f"Their address is {address}. "
-            f"Connect via Slack: {slackid}, "
-            f"GitHub: {github}, LinkedIn: {linkedin}."
+            f"Employee profile: {name} {middle_name} {lastname}.\n"
+            f"Role: {position} in the {department} department.\n"
+            f"Location: {address}.\n"
+            f"Contact: Email is {email}, phone is {contact}.\n"
+            f"Online: Slack @{slackid}, GitHub @{github}, LinkedIn @{linkedin}.\n"
+            f"Keywords: {department} {position} {address} {name}"
         ).strip()
 
         metadata = {
@@ -220,7 +231,7 @@ def _upsert_employees_sync(docs: List[Tuple[str, dict]], source_filename: str) -
         texts = [content for content, _ in docs]
 
         logger.info("[Ingestion] Generating embeddings for %d employees...", len(texts))
-        vectors = embedding_service.get_embeddings_batch_sync(texts)
+        vectors = get_embedding_service().get_embeddings_batch_sync(texts)
         logger.info(
             "[Ingestion] Embeddings done | dims=%d",
             len(vectors[0]) if vectors else 0,
@@ -243,7 +254,7 @@ def _upsert_employees_sync(docs: List[Tuple[str, dict]], source_filename: str) -
             )
             success_count += 1
 
-        client.close()
+
         logger.info(
             "[Ingestion] Upserted %d/%d employees into employee_kb",
             success_count, len(docs),
