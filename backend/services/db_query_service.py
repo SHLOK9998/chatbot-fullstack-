@@ -137,8 +137,11 @@ async def _extract_filters(query: str, schema: dict) -> dict:
             if match:
                 validated[key] = match
             else:
+                # Keep the requested value so the query correctly returns 0 results
+                # instead of dropping the filter and returning ALL employees.
+                validated[key] = value_str
                 logger.warning(
-                    "[DBQuery] '%s' value '%s' not found in DB schema — dropped. "
+                    "[DBQuery] '%s' value '%s' not found in DB schema — keeping it to return 0 results. "
                     "Available: %s", key, value_str, schema_list
                 )
 

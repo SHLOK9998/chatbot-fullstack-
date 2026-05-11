@@ -5,6 +5,7 @@ Uses tasks scope.
 """
 
 import asyncio
+import json
 import logging
 import re
 from datetime import datetime, timezone
@@ -12,8 +13,48 @@ from typing import Optional
 
 from googleapiclient.discovery import build
 from services.auth_service import _load_credentials
+from core.dependencies import get_llm
+from langchain_core.messages import HumanMessage
 
 logger = logging.getLogger(__name__)
+
+_TASK_ACTION_PROMPT = """You are a task operation extractor for a personal task manager.
+
+User query: "{query}"
+
+Extract the operation and relevant data. Return ONLY valid JSON in one of these formats:
+
+For LIST (viewing tasks):
+{{"operation": "list"}}
+
+For ADD (creating a new task):
+{{"operation": "add", "title": "..."}}
+
+For COMPLETE (marking a task as done):
+{{"operation": "complete", "title": "..."}}
+
+Rules:
+- For ADD: extract the actual task description as "title" (e.g., "buy milk"). Ignore conversational filler like "Please remind me to" or "I want to add a task to".
+- For COMPLETE: extract the name or partial name of the task to complete as "title". Ignore conversational filler.
+- If it's just asking to see tasks, return list.
+- Return ONLY the JSON. No explanation, no markdown fences.
+
+JSON:"""
+
+async def _extract_task_action(query: str) -> dict:
+    llm = get_llm()
+    prompt = _TASK_ACTION_PROMPT.format(query=query)
+    try:
+        response = await asyncio.to_thread(llm.invoke, [HumanMessage(content=prompt)])
+        raw = response.content.strip() if hasattr(response, "content") else str(response).strip()
+        raw = re.sub(r"```(?:json)?", "", raw).strip("` \n\r\t")
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict) and "operation" in parsed:
+            logger.info("[Tasks] Extracted action: %s", parsed.get("operation"))
+            return parsed
+    except Exception as e:
+        logger.warning("[Tasks] Action extraction failed: %s", e)
+    return {}
 
 
 async def _get_tasks_service(user_id: str):
@@ -35,20 +76,24 @@ async def handle_tasks(query: str, user_id: str) -> str:
             "Click the **Connect Google** button at the top of the chat to get started."
         )
 
-    query_lower = query.lower()
+    action = await _extract_task_action(query)
+    operation = action.get("operation", "list").lower()
 
-    # Detect action
-    if any(w in query_lower for w in ["show", "list", "view", "what", "my tasks", "pending", "due"]):
+    if operation == "add":
+        title = action.get("title", "")
+        if not title:
+            return "What task would you like to add? Try: \"Add task: review the Q3 report\""
+        return await _add_task(service, title, user_id)
+
+    elif operation == "complete":
+        title = action.get("title", "")
+        if not title:
+            return "Which task would you like to mark as complete? Say \"complete [task name]\"."
+        return await _complete_task(service, title, user_id)
+
+    else:
+        # Default — list tasks
         return await _list_tasks(service, user_id)
-
-    if any(w in query_lower for w in ["add", "create", "new task", "remind", "todo", "to-do"]):
-        return await _add_task(service, query, user_id)
-
-    if any(w in query_lower for w in ["complete", "done", "finish", "mark", "completed"]):
-        return await _complete_task(service, query, user_id)
-
-    # Default — list tasks
-    return await _list_tasks(service, user_id)
 
 
 async def _list_tasks(service, user_id: str) -> str:
@@ -109,17 +154,8 @@ async def _list_tasks(service, user_id: str) -> str:
         return "I couldn't fetch your tasks right now. Please try again in a moment."
 
 
-async def _add_task(service, query: str, user_id: str) -> str:
-    """Extract task title from query and create it."""
-    # Strip action prefix
-    title = re.sub(
-        r"(?i)^(add\s+a?\s*task:?\s*|create\s+a?\s*(task|to-?do):?\s*|remind\s+me\s+to\s*|todo\s*|to-do\s*|new task\s*)",
-        "", query
-    ).strip()
-
-    if not title:
-        return "What task would you like to add? Try: \"Add task: review the Q3 report\""
-
+async def _add_task(service, title: str, user_id: str) -> str:
+    """Create a task with the given title."""
     try:
         result = await asyncio.to_thread(
             lambda: service.tasks().insert(
@@ -135,17 +171,8 @@ async def _add_task(service, query: str, user_id: str) -> str:
         return "I couldn't add the task right now. Please try again."
 
 
-async def _complete_task(service, query: str, user_id: str) -> str:
+async def _complete_task(service, title_hint: str, user_id: str) -> str:
     """Find a task by partial title match and mark it complete, with disambiguation."""
-    # Extract task name from query
-    title_hint = re.sub(
-        r"(?i)^(complete|done|finish|mark\s+(as\s+)?(done|complete|finished))\s*",
-        "", query
-    ).strip()
-
-    if not title_hint:
-        return "Which task would you like to mark as complete? Say \"complete [task name]\"."
-
     try:
         # List tasks to find a match
         result = await asyncio.to_thread(
