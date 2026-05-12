@@ -207,7 +207,6 @@ async def _handle_rag(query: str, user_id: str, thread_id: str) -> str:
     try:
         response = await asyncio.to_thread(llm.invoke, [SystemMessage(content=system_content)])
         answer = (response.content.strip() if hasattr(response, "content") else str(response).strip())
-        # Only fall back to pure LLM if there was no KB context at all
         weak_signals = ["i don't know", "not enough context", "no relevant"]
         if not answer or (any(sig in answer.lower() for sig in weak_signals) and not kb_context):
             logger.info("[RAG] Weak answer with no KB — falling back to pure LLM.")
@@ -322,6 +321,7 @@ async def process_query(query: str, user_id: str = DEFAULT_USER) -> str:
 
     from services.email_handler    import handle_email_flow,    is_email_active
     from services.calendar_handler import handle_calendar_flow, is_calendar_active
+    from services.crud_service     import _pending_add, _is_cancel_intent
 
     if await is_email_active(user_id):
         logger.info("[Router] Continuing active EMAIL flow.")
@@ -332,6 +332,16 @@ async def process_query(query: str, user_id: str = DEFAULT_USER) -> str:
     if await is_calendar_active(user_id):
         logger.info("[Router] Continuing active CALENDAR flow.")
         reply = await handle_calendar_flow(query, user_id, thread_id)
+        await _save_turn_to_mongodb(thread_id, query, reply)
+        return reply
+
+    # Resume a pending add-employee flow before running intent detection.
+    # Also route cancel messages directly so the CRUD handler can clear state.
+    if user_id in _pending_add or (
+        _is_cancel_intent(query) and user_id in _pending_add
+    ):
+        logger.info("[Router] Resuming pending CRUD add flow for user=%s", user_id)
+        reply = await handle_crud(query, user_id)
         await _save_turn_to_mongodb(thread_id, query, reply)
         return reply
 
@@ -355,3 +365,5 @@ async def process_query(query: str, user_id: str = DEFAULT_USER) -> str:
 
     await _save_turn_to_mongodb(thread_id, query, reply)
     return reply
+
+

@@ -95,7 +95,6 @@ async def handle_tasks(query: str, user_id: str) -> str:
         # Default — list tasks
         return await _list_tasks(service, user_id)
 
-
 async def _list_tasks(service, user_id: str) -> str:
     """List all pending tasks from the default task list with formatted output."""
     try:
@@ -112,39 +111,17 @@ async def _list_tasks(service, user_id: str) -> str:
         if not items:
             return "You have no pending tasks. To add one, say \"Add task: review the Q3 report\"."
 
-        # Sort by due date if available
         def due_key(t):
             return t.get("due", "9999")
         items.sort(key=due_key)
 
-        lines = [f"**Your tasks** ({len(items)} pending)\n"]
-        today = datetime.now(timezone.utc).date()
+        lines = [f"You have {len(items)} pending task(s):\n"]
 
-        for i, task in enumerate(items, 1):
+        for task in items:
             title = task.get("title", "(untitled)")
-            due   = task.get("due", "")
-            notes = task.get("notes", "")
-
-            if due:
-                try:
-                    due_date = datetime.fromisoformat(due.replace("Z", "+00:00")).date()
-                    days_left = (due_date - today).days
-                    if days_left < 0:
-                        due_str = f"Overdue ({due_date.strftime('%b %d')})"
-                    elif days_left == 0:
-                        due_str = "Due today"
-                    elif days_left == 1:
-                        due_str = "Due tomorrow"
-                    else:
-                        due_str = f"Due {due_date.strftime('%b %d')}"
-                except Exception:
-                    due_str = f"Due: {due[:10]}"
-            else:
-                due_str = "No due date"
-
-            lines.append(f"{i}. **{title}**\n   {due_str}")
-            if notes:
-                lines.append(f"   _{notes[:80]}_")
+            due = task.get("due", None)
+            due_str = due[:10] if due else "no due"
+            lines.append(f"\n• {title} : {due_str}")
 
         lines.append("\nSay \"complete [task name]\" to mark a task done, or \"add task: [description]\" to add a new one.")
         return "\n".join(lines)
