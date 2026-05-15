@@ -134,7 +134,7 @@ async def set_active_thread(user_id: str, thread_id: str) -> bool:
     await db[COLLECTION].update_many({"user_id": user_id}, {"$set": {"active": False}})
     await db[COLLECTION].update_one(
         {"thread_id": thread_id},
-        {"$set": {"active": True, "updated_at": _now()}},
+        {"$set": {"active": True}},
     )
     logger.info("[Thread] Switched active thread → '%s' for user '%s'", thread_id, user_id)
     return True
@@ -151,7 +151,7 @@ async def list_threads(user_id: str, limit: int = 30) -> list[dict]:
             "_id": 0, "thread_id": 1, "title": 1, "active": 1,
             "updated_at": 1, "message_count": 1, "created_at": 1,
         },
-        sort=[("updated_at", -1)],
+        sort=[("created_at", -1)],
         limit=limit,
     )
     threads = await cursor.to_list(length=limit)

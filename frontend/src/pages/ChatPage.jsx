@@ -323,17 +323,16 @@ export default function ChatPage() {
     }
   }, [])
 
-  // On mount — load threads then load messages for the server-active thread
+  // On mount — always start a fresh thread, load sidebar in parallel
   useEffect(() => {
-    fetchThreads().then(list => {
-      if (!list) return
-      const active = list.find(t => t.active)
-      if (active) {
-        setActiveThreadId(active.thread_id)
-        setActiveThreadTitle(active.title || 'New Conversation')
-        fetchMessages(active.thread_id)
-      }
-    })
+    const init = async () => {
+      const res = await api.post('/chat/session/new')
+      setActiveThreadId(res.data.thread_id)
+      setActiveThreadTitle('New Conversation')
+      setMessages([])
+      await fetchThreads()
+    }
+    init().catch(console.error)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Flush summary when tab is closed or hidden ───────────────────────────────

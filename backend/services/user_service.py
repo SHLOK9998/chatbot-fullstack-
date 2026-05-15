@@ -29,16 +29,20 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from passlib.context import CryptContext
-
 from core.database import get_db
 
 logger = logging.getLogger(__name__)
 
 COLLECTION = "users"
 
-# bcrypt context — handles hashing and verification
-_pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
+_pwd_ctx = None
+
+def _get_pwd_ctx():
+    global _pwd_ctx
+    if _pwd_ctx is None:
+        from passlib.context import CryptContext
+        _pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    return _pwd_ctx
 
 
 # ── Validation helpers ────────────────────────────────────────────────────────
@@ -117,11 +121,11 @@ def validate_registration(
 # ── Password helpers ──────────────────────────────────────────────────────────
 
 def hash_password(plain: str) -> str:
-    return _pwd_ctx.hash(plain)
+    return _get_pwd_ctx().hash(plain)
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return _pwd_ctx.verify(plain, hashed)
+    return _get_pwd_ctx().verify(plain, hashed)
 
 
 # ── DB operations ─────────────────────────────────────────────────────────────

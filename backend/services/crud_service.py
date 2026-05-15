@@ -9,7 +9,6 @@ from core.database import get_db
 from core.dependencies import get_llm
 from services.embedding_service import EmbeddingService
 from services.db_query_service import invalidate_schema_cache
-from langchain_core.messages import HumanMessage
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +95,7 @@ async def _extract_action(query: str) -> dict:
     llm    = get_llm()
     prompt = _ACTION_EXTRACT_PROMPT.format(query=query)
     try:
+        from langchain_core.messages import HumanMessage
         response = await asyncio.to_thread(llm.invoke, [HumanMessage(content=prompt)])
         raw = response.content.strip() if hasattr(response, "content") else str(response).strip()
         raw = re.sub(r"```(?:json)?", "", raw).strip("` \n\r\t")
@@ -306,6 +306,7 @@ async def _extract_missing_fields(query: str, existing: dict) -> dict:
     existing_summary = {k: v for k, v in existing.items() if v and str(v).strip()}
     prompt = _MISSING_FIELDS_PROMPT.format(query=query, existing=json.dumps(existing_summary))
     try:
+        from langchain_core.messages import HumanMessage
         response = await asyncio.to_thread(llm.invoke, [HumanMessage(content=prompt)])
         raw = response.content.strip() if hasattr(response, "content") else str(response).strip()
         raw = re.sub(r"```(?:json)?", "", raw).strip("` \n\r\t")

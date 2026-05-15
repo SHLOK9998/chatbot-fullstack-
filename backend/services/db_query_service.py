@@ -7,7 +7,6 @@ import re
 from core.database import get_db
 from core.dependencies import get_llm
 from core.redis_client import get_redis
-from langchain_core.messages import HumanMessage
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +108,7 @@ async def _extract_filters(query: str, schema: dict) -> tuple[dict, list[str]]:
     llm = get_llm()
 
     try:
+        from langchain_core.messages import HumanMessage
         response = await asyncio.to_thread(llm.invoke, [HumanMessage(content=prompt)])
         raw = response.content.strip() if hasattr(response, "content") else str(response).strip()
         raw = re.sub(r"```(?:json)?", "", raw).strip("` \n\r\t")
@@ -219,6 +219,7 @@ async def _llm_format_response(query: str, employees: list[dict], fields: list[s
     )
 
     try:
+        from langchain_core.messages import HumanMessage
         response = await asyncio.to_thread(llm.invoke, [HumanMessage(content=prompt)])
         return response.content.strip() if hasattr(response, "content") else str(response).strip()
     except Exception as e:

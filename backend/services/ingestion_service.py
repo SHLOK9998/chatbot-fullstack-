@@ -79,11 +79,21 @@ _sync_db_handle = None
 def _get_sync_db():
     """
     Return a reusable sync pymongo database handle.
-    Used only inside ingestion (which runs in a thread, not the async event loop).
-    Reuses a single client to avoid cold-start TCP connection costs on every call.
+    Reuses the underlying pymongo client from the already-open motor connection
+    so we don't open a second TCP connection to Atlas at startup.
+    Falls back to a fresh pymongo client only if motor isn't initialised yet.
     """
     global _sync_client, _sync_db_handle
     if _sync_client is None:
+        try:
+            # motor wraps pymongo — reuse its delegate to avoid a second Atlas handshake
+            from core.database import _client as motor_client
+            if motor_client is not None:
+                _sync_client = motor_client.delegate
+                _sync_db_handle = _sync_client[settings.MONGO_DB_NAME]
+                return _sync_client, _sync_db_handle
+        except Exception:
+            pass
         import pymongo
         _sync_client = pymongo.MongoClient(settings.MONGO_URL, serverSelectionTimeoutMS=5000)
         _sync_db_handle = _sync_client[settings.MONGO_DB_NAME]

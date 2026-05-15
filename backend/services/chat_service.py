@@ -3,30 +3,7 @@ import asyncio
 import logging
 
 from core.dependencies import get_llm, get_openai_llm
-from utils.intent_detector import detect_intent, detect_intent_async
-
-from services.thread_service import (
-    create_new_thread,
-    get_active_thread,
-    set_active_thread,
-    list_threads,
-    update_thread_title,
-    invalidate_past_summaries_cache,
-)
-from services.message_service import save_message, format_history_from_db
-from services.summary_service import (
-    maybe_update_summary,
-    flush_session_summary,
-    get_thread_summary,
-    get_past_thread_summaries,
-)
-from services.mongo_rag_service import search_employees
-from services.db_query_service import handle_db_query
-from services.crud_service import handle_crud
-from services.gmail_read_service import handle_gmail_read
-from services.tasks_service import handle_tasks
-
-from langchain_core.messages import HumanMessage, SystemMessage
+from utils.intent_detector import detect_intent_async
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +15,7 @@ _active_threads: dict[str, str] = {}
 # ── Session lifecycle ─────────────────────────────────────────────────────────
 
 async def initialize_session(user_id: str = DEFAULT_USER) -> str:
+    from services.thread_service import create_new_thread
     thread_id = await create_new_thread(user_id)
     _active_threads[user_id] = thread_id
     logger.info("[Chat] Session initialized | user=%s | thread=%s", user_id, thread_id)
@@ -45,6 +23,8 @@ async def initialize_session(user_id: str = DEFAULT_USER) -> str:
 
 
 async def end_session(user_id: str = DEFAULT_USER) -> bool:
+    from services.thread_service import get_active_thread, invalidate_past_summaries_cache
+    from services.summary_service import flush_session_summary
     thread_id = _active_threads.get(user_id) or await get_active_thread(user_id)
     if not thread_id:
         return False
@@ -61,6 +41,7 @@ async def end_session(user_id: str = DEFAULT_USER) -> bool:
 # ── Thread helpers ────────────────────────────────────────────────────────────
 
 async def switch_to_thread(user_id: str, thread_id: str) -> bool:
+    from services.thread_service import set_active_thread
     ok = await set_active_thread(user_id, thread_id)
     if ok:
         _active_threads[user_id] = thread_id
@@ -68,6 +49,7 @@ async def switch_to_thread(user_id: str, thread_id: str) -> bool:
 
 
 async def get_thread_list(user_id: str) -> list[dict]:
+    from services.thread_service import list_threads
     return await list_threads(user_id)
 
 
@@ -91,6 +73,7 @@ def _build_system_prompt() -> str:
 # ── Resolve active thread ─────────────────────────────────────────────────────
 
 async def _get_thread_id(user_id: str) -> str:
+    from services.thread_service import get_active_thread, create_new_thread
     if user_id in _active_threads:
         return _active_threads[user_id]
     thread_id = await get_active_thread(user_id)
@@ -105,6 +88,8 @@ async def _get_thread_id(user_id: str) -> str:
 # ── LLM title generation (background task) ───────────────────────────────────
 
 async def _generate_and_set_title(thread_id: str, user_message: str, assistant_reply: str) -> None:
+    from langchain_core.messages import HumanMessage
+    from services.thread_service import update_thread_title
     prompt = (
         "Generate a short title (4-6 words, no punctuation, no quotes) for a "
         "conversation that started with:\n\n"
@@ -133,6 +118,7 @@ async def _generate_and_set_title(thread_id: str, user_message: str, assistant_r
 # ── Cross-thread past context builder ────────────────────────────────────────
 
 async def _get_past_context(user_id: str, current_thread_id: str) -> str:
+    from services.summary_service import get_past_thread_summaries
     past = await get_past_thread_summaries(user_id, current_thread_id)
     if not past:
         return ""
@@ -149,6 +135,10 @@ async def _get_past_context(user_id: str, current_thread_id: str) -> str:
 # ── RAG handler ───────────────────────────────────────────────────────────────
 
 async def _handle_rag(query: str, user_id: str, thread_id: str) -> str:
+    from langchain_core.messages import SystemMessage
+    from services.summary_service import get_thread_summary
+    from services.message_service import format_history_from_db
+    from services.mongo_rag_service import search_employees
     logger.info("[RAG] Handling query: '%s'", query[:80])
     llm = get_openai_llm()
 
@@ -220,6 +210,9 @@ async def _handle_rag(query: str, user_id: str, thread_id: str) -> str:
 # ── Pure LLM fallback ─────────────────────────────────────────────────────────
 
 async def _handle_llm_chat(query: str, user_id: str, thread_id: str) -> str:
+    from langchain_core.messages import HumanMessage, SystemMessage
+    from services.summary_service import get_thread_summary
+    from services.message_service import format_history_from_db
     try:
         llm             = get_openai_llm()
         past_context    = await _get_past_context(user_id, thread_id)
@@ -264,6 +257,10 @@ async def process_query_direct(query: str, user_id: str = DEFAULT_USER) -> str:
     SKIPS the active flow check — called only from email/calendar side question handlers
     to avoid looping back into the same handler.
     """
+    from services.db_query_service import handle_db_query
+    from services.crud_service import handle_crud
+    from services.gmail_read_service import handle_gmail_read
+    from services.tasks_service import handle_tasks
     if not query or not query.strip():
         return "I didn't catch that — could you rephrase?"
 
@@ -288,6 +285,8 @@ async def process_query_direct(query: str, user_id: str = DEFAULT_USER) -> str:
 # ── Save turn + trigger summary ───────────────────────────────────────────────
 
 async def _save_turn_to_mongodb(thread_id: str, query: str, answer: str) -> None:
+    from services.message_service import save_message
+    from services.summary_service import maybe_update_summary
     try:
         await save_message(thread_id, "user", query)
         new_count, summarized_up_to = await save_message(thread_id, "assistant", answer)
@@ -322,6 +321,10 @@ async def process_query(query: str, user_id: str = DEFAULT_USER) -> str:
     from services.email_handler    import handle_email_flow,    is_email_active
     from services.calendar_handler import handle_calendar_flow, is_calendar_active
     from services.crud_service     import _pending_add, _is_cancel_intent
+    from services.db_query_service import handle_db_query
+    from services.crud_service     import handle_crud
+    from services.gmail_read_service import handle_gmail_read
+    from services.tasks_service    import handle_tasks
 
     if await is_email_active(user_id):
         logger.info("[Router] Continuing active EMAIL flow.")

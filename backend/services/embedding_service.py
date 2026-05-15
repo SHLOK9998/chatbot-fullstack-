@@ -31,10 +31,8 @@ WHAT WAS REMOVED:
 
 import logging
 import asyncio
-from typing import List, Optional
+from typing import List, Optional ,TYPE_CHECKING
 from core.config import settings
-from __future__ import annotations
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from langchain_google_genai import GoogleGenerativeAIEmbeddings

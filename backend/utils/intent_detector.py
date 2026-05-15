@@ -1,20 +1,23 @@
 # utils/intent_detector.py
 import asyncio
 import logging
-from langchain_openai import ChatOpenAI
 from core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Use the stronger OpenAI-compatible model for intent detection —
-# it makes fewer misclassifications on ambiguous queries like
-# "list something" which Groq/llama confuses with tasks intent.
-_classifier_llm = ChatOpenAI(
-    model=settings.OPENAI_MODEL_NAME,
-    api_key=settings.API_FOR_OPENAI,
-    base_url="https://api.groq.com/openai/v1",
-    temperature=0,
-)
+_classifier_llm = None
+
+def _get_classifier_llm():
+    global _classifier_llm
+    if _classifier_llm is None:
+        from langchain_openai import ChatOpenAI
+        _classifier_llm = ChatOpenAI(
+            model=settings.OPENAI_MODEL_NAME,
+            api_key=settings.API_FOR_OPENAI,
+            base_url="https://api.groq.com/openai/v1",
+            temperature=0,
+        )
+    return _classifier_llm
 
 _INTENT_PROMPT = """You are a strict intent classifier for a personal AI assistant.
 Classify the user's message into EXACTLY ONE of these intents:
@@ -92,7 +95,7 @@ async def detect_intent_async(query: str) -> str:
 
     try:
         prompt   = _INTENT_PROMPT.format(query=clean_query)
-        response = await asyncio.to_thread(_classifier_llm.invoke, prompt)
+        response = await asyncio.to_thread(_get_classifier_llm().invoke, prompt)
         raw      = (response.content if hasattr(response, "content") else str(response)).strip().lower()
         raw      = raw.strip(".,!?\"' ")
 
@@ -123,7 +126,7 @@ def detect_intent(query: str) -> str:
 
     try:
         prompt   = _INTENT_PROMPT.format(query=clean_query)
-        response = _classifier_llm.invoke(prompt)
+        response = _get_classifier_llm().invoke(prompt)
         raw      = (response.content if hasattr(response, "content") else str(response)).strip().lower()
         raw      = raw.strip(".,!?\"' ")
 
