@@ -98,7 +98,9 @@ function Message({ msg, onRetry }) {
             ? 'bg-red-500/10 border-red-500/30 text-red-300'
             : 'bg-slate-800 border-slate-700'
         }`}>
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{normalizeContent(msg.content)}</ReactMarkdown>
+          <div className="overflow-x-auto">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{normalizeContent(msg.content)}</ReactMarkdown>
+          </div>
         </div>
         <div className="flex items-center gap-1 mt-1">
           {msg.timestamp && (

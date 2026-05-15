@@ -22,7 +22,8 @@ html, body, #root {
 /* Markdown styles inside chat bubbles */
 .prose-chat p { margin-bottom: 0.6rem; line-height: 1.6; }
 .prose-chat p:last-child { margin-bottom: 0; }
-.prose-chat ul, .prose-chat ol { padding-left: 1.25rem; margin-bottom: 0.6rem; }
+.prose-chat ul { padding-left: 1.25rem; margin-bottom: 0.6rem; list-style-type: disc; }
+.prose-chat ol { padding-left: 1.25rem; margin-bottom: 0.6rem; list-style-type: decimal; }
 .prose-chat li { margin-bottom: 0.3rem; line-height: 1.5; }
 .prose-chat hr { border-color: rgba(255,255,255,0.1); margin: 0.75rem 0; }
 .prose-chat code {
@@ -60,6 +61,11 @@ html, body, #root {
   color: #94a3b8;
   margin: 0.5rem 0;
 }
-.prose-chat table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; font-size: 0.85em; }
-.prose-chat th { background: rgba(79,110,247,0.15); padding: 0.4rem 0.6rem; text-align: left; border: 1px solid rgba(255,255,255,0.1); }
-.prose-chat td { padding: 0.35rem 0.6rem; border: 1px solid rgba(255,255,255,0.08); }
+.prose-chat table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; font-size: 0.85em; display: table; }
+.prose-chat thead { display: table-header-group; }
+.prose-chat tbody { display: table-row-group; }
+.prose-chat tr { display: table-row; }
+.prose-chat th { display: table-cell; background: rgba(79,110,247,0.2); padding: 0.45rem 0.75rem; text-align: left; border: 1px solid rgba(255,255,255,0.15); font-weight: 600; color: #f1f5f9; white-space: nowrap; }
+.prose-chat td { display: table-cell; padding: 0.4rem 0.75rem; border: 1px solid rgba(255,255,255,0.08); color: #cbd5e1; }
+.prose-chat tbody tr:nth-child(even) { background: rgba(255,255,255,0.03); }
+.prose-chat tbody tr:hover { background: rgba(79,110,247,0.08); }

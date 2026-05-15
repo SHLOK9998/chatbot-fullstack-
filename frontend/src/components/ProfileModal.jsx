@@ -21,7 +21,6 @@ export default function ProfileModal({ onClose }) {
 
     const payload = {}
     if (form.display_name !== user.display_name) payload.display_name = form.display_name
-    if (form.email !== user.email)               payload.email = form.email
 
     if (Object.keys(payload).length === 0) {
       setError('No changes detected.')
@@ -89,13 +88,12 @@ export default function ProfileModal({ onClose }) {
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-1.5">Email</label>
               <input
-                name="email"
                 type="email"
                 value={form.email}
-                onChange={handleChange}
-                placeholder="your@email.com"
-                className="w-full bg-slate-800 border border-slate-700 text-white placeholder-slate-500 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition"
+                disabled
+                className="w-full bg-slate-800/50 border border-slate-700/50 text-slate-500 rounded-xl px-4 py-3 text-sm cursor-not-allowed"
               />
+              <p className="text-xs text-slate-600 mt-1">Email cannot be changed.</p>
             </div>
 
             <div>
