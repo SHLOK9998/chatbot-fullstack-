@@ -34,6 +34,9 @@ def build_preview(data: dict) -> str:
     subject  = data.get("subject") or "(no subject)"
     body     = data.get("body") or "(no body)"
 
+    attachment_files = data.get("attachment_files") or []
+    attachments = ", ".join(a.get("filename", "file") for a in attachment_files) if attachment_files else "—"
+
     # Only show "Name <email>" format for exactly one recipient with a simple name.
     # For groups or multiple recipients show just the email list to avoid
     # confusing output like "all interns <hr1@c.com, hr2@c.com>".
@@ -49,7 +52,8 @@ def build_preview(data: dict) -> str:
         f"| **To** | {recipient} |\n"
         f"| **CC** | {cc} |\n"
         f"| **BCC** | {bcc} |\n"
-        f"| **Subject** | {subject} |\n\n"
+        f"| **Subject** | {subject} |\n"
+        f"| **Attachments** | {attachments} |\n\n"
         f"---\n\n"
         f"{body}\n\n"
         f"---\n\n"

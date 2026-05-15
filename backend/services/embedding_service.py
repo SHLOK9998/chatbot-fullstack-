@@ -32,10 +32,12 @@ WHAT WAS REMOVED:
 import logging
 import asyncio
 from typing import List, Optional
-
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-
 from core.config import settings
+from __future__ import annotations
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 logger = logging.getLogger(__name__)
 
@@ -65,16 +67,16 @@ class EmbeddingService:
         # Set to None now, created only on first use (lazy init).
         # Reason: we don't want to make an API call just by importing this file.
         self._embeddings: Optional[GoogleGenerativeAIEmbeddings] = None
-
         logger.info("EmbeddingService initialised | model=%s", self.model)
 
-    def _init_embeddings(self) -> GoogleGenerativeAIEmbeddings:
+    def _init_embeddings(self):
         """
         Create the Gemini embedding client if it doesn't exist yet.
         Called internally before every embedding operation.
         This is called 'lazy initialisation' — create only when first needed.
         """
         if self._embeddings is None:
+            from langchain_google_genai import GoogleGenerativeAIEmbeddings
             logger.info("Initialising GoogleGenerativeAIEmbeddings | model=%s", self.model)
             self._embeddings = GoogleGenerativeAIEmbeddings(
                 model=self.model,

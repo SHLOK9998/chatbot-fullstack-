@@ -38,7 +38,6 @@ from routers.chat_router import router as chat_router
 from routers.auth_router import router as auth_router
 from routers.google_router import router as google_router
 from services.ingestion_service import initialize_knowledge_base
-from services.chat_service import initialize_session, end_session, DEFAULT_USER
 
 # ── NEW: MCP import ───────────────────────────────────────────────────────────
 from server import mount_mcp
@@ -67,11 +66,7 @@ async def lifespan(app: FastAPI):
     # 2. Redis (optional — skips silently if REDIS_URL not set)
     await connect_redis()
 
-    # 3. Create a fresh thread for this server session
-    thread_id = await initialize_session(DEFAULT_USER)
-    logger.info("=== New session | user=%s | thread=%s ===", DEFAULT_USER, thread_id)
-
-    # 4. Load Excel knowledge base in background (non-blocking)
+    # 3. Load Excel knowledge base in background (non-blocking)
     asyncio.create_task(_background_ingest())
 
     # ── APP RUNS HERE ──────────────────────────────────────────────────────────
@@ -80,8 +75,6 @@ async def lifespan(app: FastAPI):
     # ── SHUTDOWN ───────────────────────────────────────────────────────────────
 
     try:
-        logger.info("=== Session ending | user=%s | flushing summary... ===", DEFAULT_USER)
-        await end_session(DEFAULT_USER)
         await close_redis()
         await close_db()
     except asyncio.CancelledError:

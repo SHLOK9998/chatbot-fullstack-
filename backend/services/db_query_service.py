@@ -62,7 +62,7 @@ async def invalidate_schema_cache():
 
 # ── Step 1: LLM filter extraction ─────────────────────────────────────────────
 
-_FILTER_PROMPT = """You are a strict database filter extractor for a MongoDB employee database.
+_FILTER_PROMPT = """You are a strict database filter and field extractor for a MongoDB employee database.
 
 The database has these EXACT values right now:
 
@@ -73,31 +73,31 @@ Names       : {names}
 
 User query: "{query}"
 
-Your job: return a JSON object with ONLY the filters that apply.
-Allowed keys: "department", "position", "address", "name"
+Return a JSON object with two keys:
+1. "filters" — only the filter conditions that apply (allowed keys: "department", "position", "address", "name")
+2. "fields"  — list of fields the user wants to see (allowed values: "name", "department", "position", "address", "email", "contact")
 
 STRICT RULES:
-1. You MUST only use values from the lists above — copy them EXACTLY as shown.
-2. If the user mentions a department (e.g. "AIML", "devops", "full stack"), set "department" to the EXACT matching value from the Departments list.
-3. If the user mentions a position (e.g. "intern", "developer"), set "position" to the EXACT matching value from the Positions list.
-4. If the user mentions a city/location, set "address" to the EXACT matching value from the Addresses list.
-5. If the user mentions a specific person's name, set "name" to the EXACT matching value from the Names list.
-6. If no filter applies (e.g. "list all employees"), return {{}}.
-7. Return ONLY valid JSON — no explanation, no markdown, no extra text.
+1. For filters, only use EXACT values from the lists above.
+2. If no filter applies, set "filters" to {{}}.
+3. For fields: if the user asks for specific fields (e.g. "only names and emails", "name and contact"), list only those.
+   If the user asks for "all details" or doesn't specify fields, set "fields" to ["name", "department", "position", "address", "email", "contact"].
+4. Return ONLY valid JSON — no explanation, no markdown.
 
-EXAMPLES (using hypothetical values):
-Query: "list all interns"                    → {{"position": "Intern"}}
-Query: "show AIML employees"                 → {{"department": "AIML"}}
-Query: "who is working in AIML"              → {{"department": "AIML"}}
-Query: "AIML interns"                        → {{"department": "AIML", "position": "Intern"}}
-Query: "employees in Surat"                  → {{"address": "Surat"}}
-Query: "devops interns in Ahmedabad"         → {{"department": "DevOps", "position": "Intern", "address": "Ahmedabad"}}
-Query: "list all employees"                  → {{}}
+EXAMPLES:
+Query: "list all interns"                           → {{"filters": {{"position": "Intern"}}, "fields": ["name", "department", "position", "address", "email", "contact"]}}
+Query: "AIML interns only name and email"           → {{"filters": {{"department": "AIML", "position": "Intern"}}, "fields": ["name", "email"]}}
+Query: "name and contact of all employees"          → {{"filters": {{}}, "fields": ["name", "contact"]}}
+Query: "all details of devops interns"              → {{"filters": {{"department": "DevOps", "position": "Intern"}}, "fields": ["name", "department", "position", "address", "email", "contact"]}}
+Query: "name and email and contact of AIML interns" → {{"filters": {{"department": "AIML", "position": "Intern"}}, "fields": ["name", "email", "contact"]}}
 
 JSON:"""
 
 
-async def _extract_filters(query: str, schema: dict) -> dict:
+ALL_FIELDS = ["name", "department", "position", "address", "email", "contact"]
+
+
+async def _extract_filters(query: str, schema: dict) -> tuple[dict, list[str]]:
     prompt = _FILTER_PROMPT.format(
         query=query,
         departments=schema["departments"],
@@ -113,44 +113,47 @@ async def _extract_filters(query: str, schema: dict) -> dict:
         raw = response.content.strip() if hasattr(response, "content") else str(response).strip()
         raw = re.sub(r"```(?:json)?", "", raw).strip("` \n\r\t")
 
+        m = re.search(r"\{.*\}", raw, re.DOTALL)
+        raw = m.group(0) if m else "{}"
+
         parsed = json.loads(raw)
         if not isinstance(parsed, dict):
-            return {}
+            return {}, ALL_FIELDS
 
-        validated = {}
+        # --- validate filters ---
+        raw_filters = parsed.get("filters", {})
         key_to_schema = {
             "department": "departments",
             "position":   "positions",
             "address":    "addresses",
             "name":       "names",
         }
-
-        for key, value in parsed.items():
+        validated = {}
+        for key, value in raw_filters.items():
             if key not in key_to_schema:
                 continue
             value_str   = str(value).strip()
             schema_list = schema[key_to_schema[key]]
-            match = next(
-                (item for item in schema_list if item.lower() == value_str.lower()),
-                None,
-            )
+            match = next((item for item in schema_list if item.lower() == value_str.lower()), None)
             if match:
                 validated[key] = match
             else:
-                # Keep the requested value so the query correctly returns 0 results
-                # instead of dropping the filter and returning ALL employees.
                 validated[key] = value_str
                 logger.warning(
                     "[DBQuery] '%s' value '%s' not found in DB schema — keeping it to return 0 results. "
                     "Available: %s", key, value_str, schema_list
                 )
 
-        logger.info("[DBQuery] Validated filters: %s", validated)
-        return validated
+        # --- validate fields ---
+        raw_fields = parsed.get("fields", ALL_FIELDS)
+        fields = [f for f in raw_fields if f in ALL_FIELDS] or ALL_FIELDS
+
+        logger.info("[DBQuery] Validated filters: %s | fields: %s", validated, fields)
+        return validated, fields
 
     except Exception as e:
         logger.warning("[DBQuery] Filter extraction failed: %s", e)
-        return {}
+        return {}, ALL_FIELDS
 
 
 # ── Step 2: Build MongoDB filter ──────────────────────────────────────────────
@@ -176,30 +179,55 @@ def _build_mongo_filter(filters: dict) -> dict:
     return mongo_filter
 
 
-# ── Step 3: Format results (no LLM — direct, accurate) ───────────────────────
+# ── Step 3: Build structured data for LLM formatting ─────────────────────────
 
-def _format_results(employees: list[dict]) -> str:
+def _build_employee_data(employees: list[dict], fields: list[str]) -> list[dict]:
+    result = []
+    for e in employees:
+        m = e.get("metadata", {})
+        result.append({f: m.get(f, "") for f in fields if m.get(f)})
+    return result
+
+
+# ── Step 4: LLM formats the final conversational response ─────────────────────
+
+_FORMAT_PROMPT = """You are a helpful assistant. Answer the user's query conversationally based on the data below.
+
+User query: "{query}"
+
+Data ({count} result(s)):
+{data}
+
+RULES:
+- Only mention the fields present in the data, nothing else.
+- Be concise and natural. Use a numbered list if there are multiple results.
+- If data is empty, say no matching employees were found.
+- Do NOT add any fields that are not in the data."""
+
+
+async def _llm_format_response(query: str, employees: list[dict], fields: list[str]) -> str:
     if not employees:
         return "I couldn't find any employees matching that criteria."
 
-    count = len(employees)
-    lines = [f"Found {count} employee{'s' if count != 1 else ''}:\n"]
+    data = _build_employee_data(employees, fields)
+    llm  = get_llm()
 
-    for i, e in enumerate(employees, 1):
-        m = e.get("metadata", {})
-        parts = [f"{i}. {m.get('name', '?')}"]
-        dept_pos = " | ".join(filter(None, [m.get("department", ""), m.get("position", "")]))
-        if dept_pos:
-            parts.append(dept_pos)
-        if m.get("address"):
-            parts.append(m["address"])
-        if m.get("email"):
-            parts.append(m["email"])
-        if m.get("contact"):
-            parts.append(m["contact"])
-        lines.append(" | ".join(parts))
+    prompt = _FORMAT_PROMPT.format(
+        query=query,
+        count=len(data),
+        data=json.dumps(data, indent=2),
+    )
 
-    return "\n".join(lines)
+    try:
+        response = await asyncio.to_thread(llm.invoke, [HumanMessage(content=prompt)])
+        return response.content.strip() if hasattr(response, "content") else str(response).strip()
+    except Exception as e:
+        logger.warning("[DBQuery] LLM formatting failed: %s", e)
+        # fallback: plain list
+        lines = [f"Found {len(data)} employee(s):"]
+        for i, emp in enumerate(data, 1):
+            lines.append(f"{i}. " + " | ".join(f"{k}: {v}" for k, v in emp.items()))
+        return "\n".join(lines)
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
@@ -207,11 +235,11 @@ def _format_results(employees: list[dict]) -> str:
 async def handle_db_query(query: str, user_id: str) -> str:
     logger.info("[DBQuery] Handling query: '%s'", query[:80])
 
-    schema       = await _get_schema_values()
-    filters      = await _extract_filters(query, schema)
-    mongo_filter = _build_mongo_filter(filters)
+    schema              = await _get_schema_values()
+    filters, fields     = await _extract_filters(query, schema)
+    mongo_filter        = _build_mongo_filter(filters)
 
-    logger.info("[DBQuery] MongoDB filter: %s", mongo_filter)
+    logger.info("[DBQuery] MongoDB filter: %s | fields: %s", mongo_filter, fields)
 
     try:
         db         = get_db()
@@ -227,4 +255,4 @@ async def handle_db_query(query: str, user_id: str) -> str:
         logger.exception("[DBQuery] MongoDB find failed: %s", e)
         return "Sorry, I couldn't query the employee database right now. Please try again."
 
-    return _format_results(employees)
+    return await _llm_format_response(query, employees, fields)

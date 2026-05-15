@@ -15,15 +15,13 @@ Two LLM instances:
 import logging
 from functools import lru_cache
 from core.config import settings
-from langchain_groq import ChatGroq
-from langchain_openai import ChatOpenAI
 
 logger = logging.getLogger(__name__)
 
-
 @lru_cache()
-def get_llm() -> ChatGroq:
+def get_llm():
     """Fast Groq/llama model — internal tasks only (intent, filters, flow logic)."""
+    from langchain_groq import ChatGroq
     logger.info("Initialising ChatGroq LLM (model=%s)", settings.MODEL_NAME)
     return ChatGroq(
         temperature=0.4,
@@ -33,8 +31,9 @@ def get_llm() -> ChatGroq:
 
 
 @lru_cache()
-def get_openai_llm() -> ChatOpenAI:
+def get_openai_llm():
     """OpenAI-compatible model via Groq — used for RAG, chat, and email content."""
+    from langchain_openai import ChatOpenAI
     logger.info("Initialising OpenAI LLM (model=%s)", settings.OPENAI_MODEL_NAME)
     return ChatOpenAI(
         model=settings.OPENAI_MODEL_NAME,

@@ -164,7 +164,7 @@ async def _handle_rag(query: str, user_id: str, thread_id: str) -> str:
 
     try:
         kb_results = await search_employees(query, top_k=5)
-        kb_results = [r for r in kb_results if r.get("score", 0) >= 0.60]
+        kb_results = [r for r in kb_results if r.get("score", 0) >= 0.75]
         kb_context = "\n\n".join(
             f"[{r.get('metadata', {}).get('name', 'Employee')} | "
             f"dept: {r.get('metadata', {}).get('department', '?')} | "
