@@ -28,13 +28,14 @@ For LIST (viewing tasks):
 {{"operation": "list"}}
 
 For ADD (creating a new task):
-{{"operation": "add", "title": "..."}}
+{{"operation": "add", "title": "...", "due": "YYYY-MM-DD" or null}}
 
 For COMPLETE (marking a task as done):
 {{"operation": "complete", "title": "..."}}
 
 Rules:
-- For ADD: extract the actual task description as "title" (e.g., "buy milk"). Ignore conversational filler like "Please remind me to" or "I want to add a task to".
+- For ADD: extract the actual task description as "title". Ignore conversational filler.
+  If a due date or time is mentioned (e.g. "by Friday", "tomorrow", "on 20th", "by 5pm today"), extract it as "due" in YYYY-MM-DD format using today as reference ({today}). Otherwise set "due" to null.
 - For COMPLETE: extract the name or partial name of the task to complete as "title". Ignore conversational filler.
 - If it's just asking to see tasks, return list.
 - Return ONLY the JSON. No explanation, no markdown fences.
@@ -43,7 +44,8 @@ JSON:"""
 
 async def _extract_task_action(query: str) -> dict:
     llm = get_llm()
-    prompt = _TASK_ACTION_PROMPT.format(query=query)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    prompt = _TASK_ACTION_PROMPT.format(query=query, today=today)
     try:
         response = await asyncio.to_thread(llm.invoke, [HumanMessage(content=prompt)])
         raw = response.content.strip() if hasattr(response, "content") else str(response).strip()
@@ -83,7 +85,8 @@ async def handle_tasks(query: str, user_id: str) -> str:
         title = action.get("title", "")
         if not title:
             return "What task would you like to add? Try: \"Add task: review the Q3 report\""
-        return await _add_task(service, title, user_id)
+        due = action.get("due") or None
+        return await _add_task(service, title, user_id, due)
 
     elif operation == "complete":
         title = action.get("title", "")
@@ -131,17 +134,22 @@ async def _list_tasks(service, user_id: str) -> str:
         return "I couldn't fetch your tasks right now. Please try again in a moment."
 
 
-async def _add_task(service, title: str, user_id: str) -> str:
-    """Create a task with the given title."""
+async def _add_task(service, title: str, user_id: str, due: Optional[str] = None) -> str:
+    """Create a task with the given title and optional due date."""
     try:
+        body: dict = {"title": title, "status": "needsAction"}
+        if due:
+            # Google Tasks API expects RFC 3339 UTC timestamp for due
+            body["due"] = f"{due}T00:00:00.000Z"
         result = await asyncio.to_thread(
             lambda: service.tasks().insert(
                 tasklist="@default",
-                body={"title": title, "status": "needsAction"},
+                body=body,
             ).execute()
         )
-        logger.info("[Tasks] Task created | user=%s | title=%s", user_id, title)
-        return f"Task added: **{title}**\n\nSay \"show my tasks\" to see all pending tasks."
+        due_str = f" (due {due})" if due else ""
+        logger.info("[Tasks] Task created | user=%s | title=%s | due=%s", user_id, title, due)
+        return f"Task added: **{title}**{due_str}\n\nSay \"show my tasks\" to see all pending tasks."
 
     except Exception as e:
         logger.error("[Tasks] Add failed | user=%s | %s", user_id, e)
@@ -180,10 +188,9 @@ async def _complete_task(service, title_hint: str, user_id: str) -> str:
 
         match = matches[0]
         await asyncio.to_thread(
-            lambda: service.tasks().update(
+            lambda: service.tasks().delete(
                 tasklist="@default",
                 task=match["id"],
-                body={**match, "status": "completed"},
             ).execute()
         )
 
